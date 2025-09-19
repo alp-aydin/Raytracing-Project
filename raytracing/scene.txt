@@ -1,0 +1,14 @@
+# Image / camera
+image   800 600                 # width height
+fov     60                      # degrees
+camera  0 1 3                   # x y z
+ambient 0.10 0.10 0.12          # RGB in 0..1
+
+# Lights
+light   2.5 5.0  1.0   1.00 1.00 1.00
+light  -3.0 6.0 -2.0   0.70 0.70 0.90
+
+# Objects
+sphere  -0.8 0.5 -1.5  0.50   0.80 0.20 0.20   64
+sphere   0.9 0.75 -2.5 0.75   0.20 0.80 0.20   32
+plane    0 1 0  0.0            0.60 0.60 0.60   5   # plane: nx ny nz d  colorRGB  shininess

@@ -1,5 +1,5 @@
 CMakeFiles/raytracer_min.dir/src/main.cpp.obj: \
- C:\OOP\project\raytracing\src\main.cpp \
+ C:\OOP\project\Raytracing-Project\raytracing\src\main.cpp \
  C:/msys64/ucrt64/include/opencv4/opencv2/opencv.hpp \
  C:/msys64/ucrt64/include/opencv4/opencv2/opencv_modules.hpp \
  C:/msys64/ucrt64/include/opencv4/opencv2/core.hpp \
@@ -365,4 +365,8 @@ CMakeFiles/raytracer_min.dir/src/main.cpp.obj: \
  C:/msys64/ucrt64/include/opencv4/opencv2/stitching/detail/camera.hpp \
  C:/msys64/ucrt64/include/opencv4/opencv2/video.hpp \
  C:/msys64/ucrt64/include/opencv4/opencv2/video/tracking.hpp \
- C:/msys64/ucrt64/include/opencv4/opencv2/video/background_segm.hpp
+ C:/msys64/ucrt64/include/opencv4/opencv2/video/background_segm.hpp \
+ C:/msys64/ucrt64/include/c++/15.1.0/fstream \
+ C:/msys64/ucrt64/include/c++/15.1.0/x86_64-w64-mingw32/bits/basic_file.h \
+ C:/msys64/ucrt64/include/c++/15.1.0/x86_64-w64-mingw32/bits/c++io.h \
+ C:/msys64/ucrt64/include/c++/15.1.0/bits/fstream.tcc

@@ -4,6 +4,10 @@
 #include <limits>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <memory>
+#include <cctype>
 
 constexpr double EPS = 1e-6;
 
@@ -11,52 +15,37 @@ struct Vec3 {
     double x{}, y{}, z{};
     Vec3() = default;
     Vec3(double X, double Y, double Z) : x(X), y(Y), z(Z) {}
-
     Vec3 operator+(const Vec3& o) const { return {x+o.x, y+o.y, z+o.z}; }
     Vec3 operator-(const Vec3& o) const { return {x-o.x, y-o.y, z-o.z}; }
     Vec3 operator*(double s) const { return {x*s, y*s, z*s}; }
     Vec3 operator/(double s) const { return {x/s, y/s, z/s}; }
-
     Vec3& operator+=(const Vec3& o){ x+=o.x; y+=o.y; z+=o.z; return *this; }
-
     static double dot(const Vec3& a, const Vec3& b){ return a.x*b.x + a.y*b.y + a.z*b.z; }
     static Vec3 cross(const Vec3& a, const Vec3& b){
         return { a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x };
     }
     double norm() const { return std::sqrt(x*x+y*y+z*z); }
-    Vec3 normalized() const {
-        double n = norm();
-        return (n > 0) ? (*this)/n : *this;
-    }
+    Vec3 normalized() const { double n = norm(); return (n>0)?(*this)/n:*this; }
 };
 
 struct Color {
     double r{}, g{}, b{}; // 0..1
     Color() = default;
     Color(double R, double G, double B) : r(R), g(G), b(B) {}
-
     Color operator+(const Color& o) const { return {r+o.r, g+o.g, b+o.b}; }
     Color operator*(double s) const { return {r*s, g*s, b*s}; }
     Color& operator+=(const Color& o){ r+=o.r; g+=o.g; b+=o.b; return *this; }
-
-    static Color hadamard(const Color& a, const Color& b){
-        return {a.r*b.r, a.g*b.g, a.b*b.b};
-    }
-    void clamp(){
-        r = std::min(1.0, std::max(0.0, r));
-        g = std::min(1.0, std::max(0.0, g));
-        b = std::min(1.0, std::max(0.0, b));
-    }
+    static Color hadamard(const Color& a, const Color& b){ return {a.r*b.r, a.g*b.g, a.b*b.b}; }
+    void clamp(){ r = std::clamp(r,0.0,1.0); g = std::clamp(g,0.0,1.0); b = std::clamp(b,0.0,1.0); }
 };
 
 struct Ray { Vec3 origin; Vec3 dir; }; // dir should be normalized
 
 struct Material {
     Color Ka{0.05, 0.05, 0.05}; // ambient
-    Color Kd{0.7, 0.7, 0.7};    // diffuse (Lambert)
+    Color Kd{0.7, 0.7, 0.7};    // diffuse
     Color Ks{0.3, 0.3, 0.3};    // specular
     double shininess{32.0};
-    // For minimal example we skip reflection/refraction
 };
 
 struct Light {
@@ -66,8 +55,7 @@ struct Light {
 
 struct Hit {
     double t{std::numeric_limits<double>::infinity()};
-    Vec3 p;
-    Vec3 n;
+    Vec3 p, n;
     Material mat;
     bool hit{false};
 };
@@ -81,10 +69,9 @@ struct Object {
 struct Sphere : Object {
     Vec3 c; double r;
     Sphere(const Vec3& C, double R, const Material& M){ c=C; r=R; mat=M; }
-
     Hit intersect(const Ray& ray) const override {
         Vec3 oc = ray.origin - c;
-        double a = Vec3::dot(ray.dir, ray.dir); // should be 1 if dir normalized
+        double a = Vec3::dot(ray.dir, ray.dir);
         double b = 2.0 * Vec3::dot(oc, ray.dir);
         double cQ = Vec3::dot(oc, oc) - r*r;
         double disc = b*b - 4*a*cQ;
@@ -95,7 +82,6 @@ struct Sphere : Object {
         double t2 = (-b + s) / (2*a);
         double t = (t1 > EPS) ? t1 : ((t2 > EPS) ? t2 : std::numeric_limits<double>::infinity());
         if (!std::isfinite(t)) return h;
-
         h.t = t;
         h.p = ray.origin + ray.dir * t;
         h.n = (h.p - c).normalized();
@@ -106,13 +92,12 @@ struct Sphere : Object {
 };
 
 struct Plane : Object {
-    // Plane defined by normal n (normalized) and offset d: dot(n, p) + d = 0
+    // Plane: dot(n, p) + d = 0 (n normalized)
     Vec3 n; double d;
     Plane(const Vec3& N, double D, const Material& M){ n=N.normalized(); d=D; mat=M; }
-
     Hit intersect(const Ray& ray) const override {
-        double denom = Vec3::dot(n, ray.dir);
         Hit h;
+        double denom = Vec3::dot(n, ray.dir);
         if (std::fabs(denom) < 1e-9) return h; // parallel
         double t = -(Vec3::dot(n, ray.origin) + d) / denom;
         if (t <= EPS) return h;
@@ -125,13 +110,16 @@ struct Plane : Object {
     }
 };
 
+
+
 struct Scene {
-    std::vector<const Object*> objects;
+    std::vector<const Object*> objects;            // raw ptrs into owned_objects
+    std::vector<std::unique_ptr<Object>> owned;    // ownership lives here
     std::vector<Light> lights;
     Color ambient{0.1, 0.1, 0.1};
 
     bool occluded(const Vec3& p, const Vec3& toLight, double maxDist) const {
-        Ray shadowRay{ p + toLight * EPS, toLight }; // small offset to avoid acne
+        Ray shadowRay{ p + toLight * EPS, toLight };
         for (const auto* obj : objects) {
             Hit h = obj->intersect(shadowRay);
             if (h.hit && h.t < maxDist - EPS) return true;
@@ -140,25 +128,18 @@ struct Scene {
     }
 
     Color shade(const Ray& ray, const Hit& h) const {
-        // Phong: ambient + sum_lights( diffuse + specular )
-        Color out = Color::hadamard(h.mat.Ka, ambient); // ambient term
+        Color out = Color::hadamard(h.mat.Ka, ambient); // ambient
         Vec3 V = (ray.origin - h.p).normalized();
-
         for (const auto& L : lights) {
             Vec3 Ldir = (L.pos - h.p);
             double dist = Ldir.norm();
             Ldir = Ldir / dist;
-
-            if (occluded(h.p, Ldir, dist)) continue; // in shadow
-
+            if (occluded(h.p, Ldir, dist)) continue;
             double ndotl = std::max(0.0, Vec3::dot(h.n, Ldir));
             Color diffuse = Color::hadamard(h.mat.Kd, L.intensity) * ndotl;
-
-            // Blinn-Phong: use half-vector for numerical stability
-            Vec3 H = (Ldir + V).normalized();
+            Vec3 H = (Ldir + V).normalized();           // Blinn-Phong
             double ndoth = std::max(0.0, Vec3::dot(h.n, H));
             Color spec = Color::hadamard(h.mat.Ks, L.intensity) * std::pow(ndoth, h.mat.shininess);
-
             out += diffuse + spec;
         }
         out.clamp();
@@ -171,52 +152,136 @@ struct Scene {
             Hit h = obj->intersect(ray);
             if (h.hit && h.t < best.t) best = h;
         }
-        if (!best.hit) return {0.0, 0.0, 0.0}; // background
+        if (!best.hit) return {0.0, 0.0, 0.0};
         return shade(ray, best);
     }
 };
 
-int main() {
-    // ---------- Image / camera ----------
-    const int width = 800;
-    const int height = 600;
-    const double fov_deg = 60.0;
-    const double fov = fov_deg * M_PI / 180.0;
-    const double aspect = static_cast<double>(width) / height;
-    const Vec3 camPos(0, 1, 3); // slightly above, looking toward -Z
+// -------------------- Parsing --------------------
 
-    // ---------- Scene ----------
-    Material red;   red.Kd = {0.8, 0.2, 0.2}; red.Ks = {0.6, 0.6, 0.6}; red.shininess = 64;
-    Material green; green.Kd = {0.2, 0.8, 0.2}; green.Ks = {0.4, 0.4, 0.4}; green.shininess = 32;
-    Material gray;  gray.Kd = {0.6, 0.6, 0.6}; gray.Ks = {0.2, 0.2, 0.2}; gray.shininess = 8;
+static std::string trim_leading(const std::string& s){
+    size_t i=0; while(i<s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i; return s.substr(i);
+}
 
-    Sphere s1({-0.8, 0.5, -1.5}, 0.5, red);
-    Sphere s2({ 0.9, 0.75, -2.5}, 0.75, green);
-    Plane  ground({0,1,0}, 0.0, gray); // y=0 plane (n=(0,1,0), d=0)
+bool load_scene_from_file(const std::string& path,
+                          int& width, int& height,
+                          double& fov_deg,
+                          Vec3& camPos,
+                          Scene& scene)
+{
+    // defaults (in case file omits something)
+    width = 800; height = 600; fov_deg = 60.0; camPos = {0,1,3};
+    scene.ambient = {0.1,0.1,0.12};
+    scene.lights.clear(); scene.owned.clear(); scene.objects.clear();
 
-    Light  l1{{ 2.5, 5.0,  1.0}, {1.0, 1.0, 1.0}};
-    Light  l2{{-3.0, 6.0, -2.0}, {0.7, 0.7, 0.9}};
+    std::ifstream in(path);
+    if(!in) { std::cerr << "Cannot open scene file: " << path << "\n"; return false; }
 
+    std::string line;
+    int ln = 0;
+    while (std::getline(in, line)) {
+        ++ln;
+        auto hash = line.find('#');                  // strip comments
+        if (hash != std::string::npos) line = line.substr(0, hash);
+        line = trim_leading(line);
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        std::string kw; ss >> kw;
+        if (kw.empty()) continue;
+
+        if (kw == "image") {
+            ss >> width >> height;
+            if (!ss) { std::cerr << "Parse error (image) line " << ln << "\n"; return false; }
+        } else if (kw == "fov") {
+            ss >> fov_deg;
+            if (!ss) { std::cerr << "Parse error (fov) line " << ln << "\n"; return false; }
+        } else if (kw == "camera") {
+            ss >> camPos.x >> camPos.y >> camPos.z;
+            if (!ss) { std::cerr << "Parse error (camera) line " << ln << "\n"; return false; }
+        } else if (kw == "ambient") {
+            ss >> scene.ambient.r >> scene.ambient.g >> scene.ambient.b;
+            if (!ss) { std::cerr << "Parse error (ambient) line " << ln << "\n"; return false; }
+        } else if (kw == "light") {
+            Light L;
+            ss >> L.pos.x >> L.pos.y >> L.pos.z >> L.intensity.r >> L.intensity.g >> L.intensity.b;
+            if (!ss) { std::cerr << "Parse error (light) line " << ln << "\n"; return false; }
+            scene.lights.push_back(L);
+        } else if (kw == "sphere") {
+            Vec3 c; double r; Color col; double shiny=32.0;
+            ss >> c.x >> c.y >> c.z >> r >> col.r >> col.g >> col.b >> shiny;
+            if (!ss) { std::cerr << "Parse error (sphere) line " << ln << "\n"; return false; }
+            Material m;
+            m.Kd = col;
+            m.Ka = {0.05*col.r, 0.05*col.g, 0.05*col.b};
+            m.Ks = {0.4, 0.4, 0.4};
+            m.shininess = shiny;
+            auto sp = std::make_unique<Sphere>(c, r, m);
+            scene.objects.push_back(sp.get());
+            scene.owned.push_back(std::move(sp));
+        } else if (kw == "plane") {
+            // plane: nx ny nz d  r g b  shininess
+            Vec3 n; double d; Color col; double shiny=8.0;
+            ss >> n.x >> n.y >> n.z >> d >> col.r >> col.g >> col.b >> shiny;
+            if (!ss) { std::cerr << "Parse error (plane) line " << ln << "\n"; return false; }
+            Material m;
+            m.Kd = col;
+            m.Ka = {0.05*col.r, 0.05*col.g, 0.05*col.b};
+            m.Ks = {0.2, 0.2, 0.2};
+            m.shininess = shiny;
+            auto pl = std::make_unique<Plane>(n, d, m);
+            scene.objects.push_back(pl.get());
+            scene.owned.push_back(std::move(pl));
+        } else {
+            std::cerr << "Unknown keyword '" << kw << "' at line " << ln << "\n";
+            return false;
+        }
+    }
+    if (scene.lights.empty()) {
+        std::cerr << "Warning: no lights defined; image will be black.\n";
+    }
+    return true;
+}
+
+// -------------------- Main --------------------
+
+int main(int argc, char** argv) {
+    const std::string scene_path = (argc > 1) ? argv[1] : "scene.txt";
+
+    int width=800, height=600;
+    double fov_deg = 60.0;
+    Vec3 camPos{0,1,3};
     Scene scene;
-    scene.objects = { &s1, &s2, &ground };
-    scene.lights  = { l1, l2 };
-    scene.ambient = {0.1, 0.1, 0.12};
+
+    if (!load_scene_from_file(scene_path, width, height, fov_deg, camPos, scene)) {
+        std::cerr << "Falling back to built-in test scene.\n";
+        // Minimal fallback
+        Material red;   red.Kd={0.8,0.2,0.2}; red.Ks={0.6,0.6,0.6}; red.shininess=64;
+        Material green; green.Kd={0.2,0.8,0.2}; green.Ks={0.4,0.4,0.4}; green.shininess=32;
+        Material gray;  gray.Kd={0.6,0.6,0.6}; gray.Ks={0.2,0.2,0.2}; gray.shininess=8;
+        scene.ambient = {0.1,0.1,0.12};
+        auto s1 = std::make_unique<Sphere>(Vec3{-0.8,0.5,-1.5}, 0.5, red);
+        auto s2 = std::make_unique<Sphere>(Vec3{ 0.9,0.75,-2.5}, 0.75, green);
+        auto pl = std::make_unique<Plane>(Vec3{0,1,0}, 0.0, gray);
+        scene.objects = { s1.get(), s2.get(), pl.get() };
+        scene.owned.push_back(std::move(s1));
+        scene.owned.push_back(std::move(s2));
+        scene.owned.push_back(std::move(pl));
+        scene.lights  = { {{ 2.5,5.0, 1.0},{1,1,1}}, {{-3.0,6.0,-2.0},{0.7,0.7,0.9}} };
+    }
 
     // ---------- Render ----------
-    cv::Mat img(height, width, CV_8UC3);
-
+    const double fov = fov_deg * M_PI / 180.0;
+    const double aspect = static_cast<double>(width) / height;
     const double scale = std::tan(fov * 0.5);
+
+    cv::Mat img(height, width, CV_8UC3);
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            // NDC -> camera space
             double px = ( (x + 0.5) / width  * 2.0 - 1.0) * aspect * scale;
             double py = ( 1.0 - (y + 0.5) / height * 2.0) * scale;
             Vec3 dir = Vec3(px, py, -1.0).normalized();
-
             Ray ray{ camPos, dir };
-            Color c = scene.trace(ray);
-            c.clamp();
-
+            Color c = scene.trace(ray); c.clamp();
             cv::Vec3b& BGR = img.at<cv::Vec3b>(y, x);
             BGR[2] = static_cast<unsigned char>(std::round(c.r * 255.0));
             BGR[1] = static_cast<unsigned char>(std::round(c.g * 255.0));

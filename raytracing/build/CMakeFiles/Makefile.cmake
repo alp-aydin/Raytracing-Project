@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_GENERATOR "MinGW Makefiles")
 # The top level Makefile was generated from the following files:
 set(CMAKE_MAKEFILE_DEPENDS
   "CMakeCache.txt"
-  "C:/OOP/project/raytracing/CMakeLists.txt"
+  "C:/OOP/project/Raytracing-Project/raytracing/CMakeLists.txt"
   "CMakeFiles/4.0.2/CMakeCXXCompiler.cmake"
   "CMakeFiles/4.0.2/CMakeRCCompiler.cmake"
   "CMakeFiles/4.0.2/CMakeSystem.cmake"
