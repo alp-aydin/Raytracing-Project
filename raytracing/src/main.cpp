@@ -1,4 +1,5 @@
 #include <opencv2/opencv.hpp>
+#include <filesystem>
 #include <cmath>
 #include <vector>
 #include <limits>
@@ -110,6 +111,42 @@ struct Plane : Object {
     }
 };
 
+struct CheckeredPlane : Plane {
+    Color a{0.9,0.9,0.9}, b{0.2,0.2,0.2};
+    double tile{1.0};
+    Vec3 u, v;      // tangent basis
+    Vec3 p0;        // any fixed point on the plane (anchor)
+
+    CheckeredPlane(const Vec3& N, double D, Color A, Color B, double tileSize)
+        : Plane(N, D, /*unused base mat*/ Material{}),
+          a(A), b(B), tile(tileSize > 0 ? tileSize : 1.0)
+    {
+        // Orthonormal basis on plane
+        Vec3 any = (std::fabs(n.x) < 0.9) ? Vec3{1,0,0} : Vec3{0,1,0};
+        u = Vec3::cross(n, any).normalized();
+        v = Vec3::cross(n, u);
+        // A consistent origin point on the plane: dot(n, p0) + d = 0  ->  p0 = -d * n
+        p0 = n * (-d);
+    }
+
+    Hit intersect(const Ray& ray) const override {
+        Hit h = Plane::intersect(ray);
+        if (!h.hit) return h;
+
+        // Use anchored local coordinates to avoid artifacts
+        Vec3 local = h.p - p0;
+        double U = Vec3::dot(local, u) / tile;
+        double V = Vec3::dot(local, v) / tile;
+        bool odd = ((int)std::floor(U) + (int)std::floor(V)) & 1;
+        Color c = odd ? b : a;
+
+        h.mat.Kd = c;
+        h.mat.Ka = {0.05*c.r, 0.05*c.g, 0.05*c.b};
+        h.mat.Ks = {0,0,0};
+        h.mat.shininess = 1.0;
+        return h;
+    }
+};
 
 
 struct Scene {
@@ -169,7 +206,7 @@ bool load_scene_from_file(const std::string& path,
                           Vec3& camPos,
                           Scene& scene)
 {
-    // defaults (in case file omits something)
+    // defaults...
     width = 800; height = 600; fov_deg = 60.0; camPos = {0,1,3};
     scene.ambient = {0.1,0.1,0.12};
     scene.lights.clear(); scene.owned.clear(); scene.objects.clear();
@@ -181,7 +218,7 @@ bool load_scene_from_file(const std::string& path,
     int ln = 0;
     while (std::getline(in, line)) {
         ++ln;
-        auto hash = line.find('#');                  // strip comments
+        auto hash = line.find('#');
         if (hash != std::string::npos) line = line.substr(0, hash);
         line = trim_leading(line);
         if (line.empty()) continue;
@@ -219,7 +256,6 @@ bool load_scene_from_file(const std::string& path,
             scene.objects.push_back(sp.get());
             scene.owned.push_back(std::move(sp));
         } else if (kw == "plane") {
-            // plane: nx ny nz d  r g b  shininess
             Vec3 n; double d; Color col; double shiny=8.0;
             ss >> n.x >> n.y >> n.z >> d >> col.r >> col.g >> col.b >> shiny;
             if (!ss) { std::cerr << "Parse error (plane) line " << ln << "\n"; return false; }
@@ -231,6 +267,17 @@ bool load_scene_from_file(const std::string& path,
             auto pl = std::make_unique<Plane>(n, d, m);
             scene.objects.push_back(pl.get());
             scene.owned.push_back(std::move(pl));
+        } else if (kw == "checkerplane") {
+            // <-- new branch
+            Vec3 n; double d; Color a, b; double size;
+            ss >> n.x >> n.y >> n.z >> d
+               >> a.r >> a.g >> a.b
+               >> b.r >> b.g >> b.b
+               >> size;
+            if (!ss) { std::cerr << "Parse error (checkerplane) line " << ln << "\n"; return false; }
+            auto cp = std::make_unique<CheckeredPlane>(n, d, a, b, size);
+            scene.objects.push_back(cp.get());
+            scene.owned.push_back(std::move(cp));
         } else {
             std::cerr << "Unknown keyword '" << kw << "' at line " << ln << "\n";
             return false;
@@ -241,6 +288,7 @@ bool load_scene_from_file(const std::string& path,
     }
     return true;
 }
+
 
 // -------------------- Main --------------------
 
