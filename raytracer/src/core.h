@@ -9,6 +9,9 @@
 constexpr double kEPS = 1e-6;
 constexpr double kINF = std::numeric_limits<double>::infinity();
 
+//
+// Base 3D vector math
+//
 struct Vec3 {
     double x{}, y{}, z{};
     Vec3() = default;
@@ -34,13 +37,32 @@ struct Vec3 {
 
 inline Vec3 operator*(double s, const Vec3& v){ return v*s; }
 
-struct Ray {
-    Vec3 o, d; // origin, direction (normalized preferred)
-    Ray() = default;
-    Ray(const Vec3& oo, const Vec3& dd): o(oo), d(dd) {}
-    Vec3 at(double t) const { return o + d*t; }
+//
+// Distinguish between Point3 and Dir3
+//
+struct Point3 : public Vec3 {
+    using Vec3::Vec3;   // inherit constructors
 };
 
+struct Dir3 : public Vec3 {
+    using Vec3::Vec3;   // inherit constructors
+    Dir3 normalized() const { return Dir3(Vec3::normalized()); }
+};
+
+//
+// Ray type
+//
+struct Ray {
+    Point3 o;  // origin (point)
+    Dir3 d;    // direction
+    Ray() = default;
+    Ray(const Point3& oo, const Dir3& dd): o(oo), d(dd.normalized()) {}
+    Point3 at(double t) const { return Point3(o + d*t); }
+};
+
+//
+// Color type
+//
 struct Color {
     double r{}, g{}, b{};
     Color() = default;
