@@ -1,8 +1,0 @@
-[
-{
-  "directory": "C:/OOP/project/Raytracing-Project/raytracing/build",
-  "command": "C:\\msys64\\ucrt64\\bin\\c++.exe  @CMakeFiles/raytracer_min.dir/includes_CXX.rsp -std=gnu++17 -o CMakeFiles\\raytracer_min.dir\\src\\main.cpp.obj -c C:\\OOP\\project\\Raytracing-Project\\raytracing\\src\\main.cpp",
-  "file": "C:/OOP/project/Raytracing-Project/raytracing/src/main.cpp",
-  "output": "CMakeFiles/raytracer_min.dir/src/main.cpp.obj"
-}
-]

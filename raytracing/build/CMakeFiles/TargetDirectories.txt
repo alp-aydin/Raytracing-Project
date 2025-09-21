@@ -1,3 +1,0 @@
-C:/OOP/project/Raytracing-Project/raytracing/build/CMakeFiles/raytracer_min.dir
-C:/OOP/project/Raytracing-Project/raytracing/build/CMakeFiles/edit_cache.dir
-C:/OOP/project/Raytracing-Project/raytracing/build/CMakeFiles/rebuild_cache.dir
