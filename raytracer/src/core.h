@@ -42,11 +42,13 @@ inline Vec3 operator*(double s, const Vec3& v){ return v*s; }
 //
 struct Point3 : public Vec3 {
     using Vec3::Vec3;   // inherit constructors
+    Point3(const Vec3& v) : Vec3(v){}
 };
 
 struct Dir3 : public Vec3 {
     using Vec3::Vec3;   // inherit constructors
-    Dir3 normalized() const { return Dir3(Vec3::normalized()); }
+    Dir3(const Vec3& v) : Vec3(v){}
+    Dir3 normalized() const { return Dir3(Vec3::normalized()); } // aded this line to get rid of 
 };
 
 //

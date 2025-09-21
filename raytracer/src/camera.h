@@ -18,9 +18,9 @@
 // - We normalize the primary ray direction here so later code can assume ||d|| = 1.
 
 struct Screen {
-    Vec3  P;      // bottom-left point(later change after implementation of point) on the screen plane
-    Vec3  U;      // horizontal edge vector (full width)
-    Vec3  V;      // vertical   edge vector (full height)
+    Point3 P;   // bottom-left point on the screen plane
+    Dir3   U;   // horizontal edge vector (full width)
+    Dir3   V;   // vertical   edge vector (full height)
     int   dpi{1}; // pixels per unit along U and V (must be > 0)
 
     // Convenience: pixel dimensions implied by geometry
@@ -29,11 +29,11 @@ struct Screen {
 };
 
 struct Camera {
-    Vec3   eye;     // observer position
+    Point3   eye;     // observer position
     Screen screen;  // screen definition
 
     // World-space point at the CENTER of pixel (ix, iy).
-    Vec3 pixelCenter(int ix, int iy) const;
+    Point3 pixelCenter(int ix, int iy) const;
 
     // Primary ray from eye through pixel center; dir is normalized.
     Ray makeRay(int ix, int iy) const;
