@@ -1,56 +1,58 @@
 #include "shading.h"
-
+#include <algorithm>
+static inline Color combine(const Color& a, const Color& b){ // ⊕ operator
+    return { 1.0 - (1.0 - a.r)*(1.0 - b.r),
+             1.0 - (1.0 - a.g)*(1.0 - b.g),
+             1.0 - (1.0 - a.b)*(1.0 - b.b) };
+}
+static inline Color mul(const Color& a, const Color& b){ // Hadamard
+    return { a.r*b.r, a.g*b.g, a.b*b.b };
+}
 Color shade_lambert_phong(const Scene& scene, const Hit& hit, const Dir3& wo)
 {
-    if (!hit.mat) return {1,0,1}; // magenta error color
-
+    if (!hit.mat) return {1,0,1};
     const Material& m = *hit.mat;
-    const Dir3 n = hit.n; // unit
-    Color Lo{0,0,0};
+    const Dir3 n = hit.n;
+
+    // Ambient: approximate Ka by albedo (spec asks E_a = K_a I_a)
+    Color Lo = mul(m.albedo, scene.ambient);  // E_a  (part 4) :contentReference[oaicite:9]{index=9}
 
     // Directional lights
     for (const auto& L : scene.dir_lights) {
-        // Incoming light direction at the point
         Dir3 wi = (-L.dir).normalized();
         double ndotl = std::max(0.0, n.dot(wi));
+        if (ndotl <= 0.0) continue;
 
-        // Shadow ray (offset to avoid self-intersection)
-        Ray shadow_ray(hit.p + n * 1e-4, wi);
-        if (scene.occluded(shadow_ray, 1e-5, kINF)) continue;
+        // hard shadow: ray from hit point toward light
+        Ray sray{ Point3(hit.p + n * 1e-4), wi };
+        if (scene.occluded(sray, 1e-4, kINF)) continue; // blocked
 
-        // Diffuse
         Color diff = m.albedo * (m.kd * ndotl);
-
-        // Specular (Blinn-Phong)
         Dir3 h = (wi + wo).normalized();
         double ndoth = std::max(0.0, n.dot(h));
-        double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
-
-        Lo += hadamard(diff + Color(spec, spec, spec), L.radiance);
+        double spec = (m.ks>0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
+        Color Li = L.radiance; // dir light as radiance, no falloff
+        Lo = combine(Lo, mul(diff + Color(spec,spec,spec), Li)); // ⊕ combine :contentReference[oaicite:10]{index=10}
     }
 
-    // Point lights with 1/r^2 falloff
+    // Point lights
     for (const auto& L : scene.point_lights) {
-        Vec3 Lvec = L.pos - hit.p;
-        double dist2 = Lvec.dot(Lvec);
-        double dist = std::sqrt(dist2);
-        Dir3 wi = Dir3(Lvec / dist);
+        Dir3 wi = (L.pos - hit.p).normalized();
         double ndotl = std::max(0.0, n.dot(wi));
+        if (ndotl <= 0.0) continue;
 
-        // Shadow ray up to the light
-        Ray shadow_ray(hit.p + n * 1e-4, wi);
-        if (scene.occluded(shadow_ray, 1e-5, dist - 1e-4)) continue;
+        // distance & shadow
+        double dist2 = (L.pos - hit.p).dot(L.pos - hit.p);
+        double dist  = std::sqrt(std::max(0.0, dist2));
+        Ray sray{ Point3(hit.p + n * 1e-4), wi };
+        if (scene.occluded(sray, 1e-4, dist - 1e-4)) continue;
 
-        // Diffuse
         Color diff = m.albedo * (m.kd * ndotl);
-
-        // Specular
         Dir3 h = (wi + wo).normalized();
         double ndoth = std::max(0.0, n.dot(h));
-        double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
-
+        double spec = (m.ks>0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
         Color Li = L.intensity * (1.0 / std::max(1e-6, dist2));
-        Lo += hadamard(diff + Color(spec, spec, spec), Li);
+        Lo = combine(Lo, mul(diff + Color(spec,spec,spec), Li)); // ⊕ combine
     }
 
     return Lo;
