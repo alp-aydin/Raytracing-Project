@@ -18,7 +18,7 @@ void Tracer::render(std::vector<Color>& framebuffer) const {
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            Ray pr = camera->makeRay(x, y);
+            Ray pr = camera->generate_ray(x, y);
             framebuffer[static_cast<std::size_t>(y)*width + x] = trace(pr);
         }
     }

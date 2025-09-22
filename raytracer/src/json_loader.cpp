@@ -1,335 +1,367 @@
 #include "json_loader.h"
 
-#include <stdexcept>
+// STL
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <memory>
-#include <vector>
-#include <cmath>
-#include <algorithm>
+#include <type_traits>
+#include <utility>
 
-// Only your existing headers:
-#include "core.h"       // Color, Point3, Dir3, Material, etc.
-#include "scene.h"      // Scene (ambient, medium_index, recursion_limit, point_lights, objects)
-#include "camera.h"     // Camera (set_dpi, set_dimensions, set_bottom_left, set_observer)
-#include "geometry.h"   // Sphere, HalfSpace (both already exist in your project)
-#include "transform.h"  // Scaling, Translation, RotationX, RotationY, RotationZ
-#include "csg.h"        // CSG, CSGOp
+// Your project headers (adjust paths if needed)
+#include "core.h"
+#include "camera.h"
+#include "scene.h"
+#include "geometry.h"
+#include "transform.h"
+#include "csg.h"
 
-// Forward-declare the base type so we don't include any extra headers:
-struct Primitive;
-
-// JSON library
+// JSON
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 
 namespace {
 
-// ---------------- helpers ----------------
-
-[[noreturn]] void fail(const std::string& msg) {
-    throw std::runtime_error("json_loader: " + msg);
+// ------------------------ small JSON helpers ------------------------
+template <typename T>
+T get_or(const json& j, const char* key, const T& fallback) {
+    if (!j.contains(key)) return fallback;
+    return j.at(key).get<T>();
 }
 
-bool has(const json& j, const char* key) {
-    return j.contains(key) && !j.at(key).is_null();
+inline Vec3 as_vec3_from_array(const json& arr) {
+    if (!arr.is_array() || arr.size() != 3) {
+        throw std::runtime_error("Expected array[3].");
+    }
+    return Vec3(arr[0].get<double>(), arr[1].get<double>(), arr[2].get<double>());
 }
 
-double as_number(const json& j, const char* where) {
-    if (!j.is_number()) fail(std::string(where) + " must be a number");
+inline Vec3 as_vecN_from_array_len2_or3(const json& arr) {
+    if (!arr.is_array() || (arr.size() < 2 || arr.size() > 3)) {
+        throw std::runtime_error("Expected array[2] or array[3] for dimensions.");
+    }
+    const double x = arr[0].get<double>();
+    const double y = arr[1].get<double>();
+    const double z = (arr.size() == 3 ? arr[2].get<double>() : 0.0);
+    return Vec3(x, y, z);
+}
+
+inline Color as_color3_array(const json& arr) {
+    if (!arr.is_array() || arr.size() != 3) {
+        throw std::runtime_error("Expected color array[3].");
+    }
+    return Color(arr[0].get<double>(), arr[1].get<double>(), arr[2].get<double>());
+}
+
+inline double as_number(const json& j) {
+    if (!j.is_number()) throw std::runtime_error("Expected number.");
     return j.get<double>();
 }
 
-int as_int(const json& j, const char* where) {
-    if (!j.is_number_integer()) fail(std::string(where) + " must be an integer");
-    return j.get<int>();
+// ------------------------ SFINAE setters (safe if fields don't exist) ------------------------
+template <typename M, typename = void>
+struct has_member_ka : std::false_type {};
+template <typename M>
+struct has_member_ka<M, std::void_t<decltype(std::declval<M&>().ka)> > : std::true_type {};
+
+template <typename M, typename = void>
+struct has_member_kr : std::false_type {};
+template <typename M>
+struct has_member_kr<M, std::void_t<decltype(std::declval<M&>().kr)> > : std::true_type {};
+
+template <typename M, typename = void>
+struct has_member_kt : std::false_type {};
+template <typename M>
+struct has_member_kt<M, std::void_t<decltype(std::declval<M&>().kt)> > : std::true_type {};
+
+template <typename M, typename = void>
+struct has_member_kd : std::false_type {};
+template <typename M>
+struct has_member_kd<M, std::void_t<decltype(std::declval<M&>().kd)> > : std::true_type {};
+
+template <typename P, typename = void>
+struct has_member_ior : std::false_type {};
+template <typename P>
+struct has_member_ior<P, std::void_t<decltype(std::declval<P&>().ior)> > : std::true_type {};
+
+template <typename M>
+inline void set_ka_if_exists(M& m, const Color& ka) {
+    if constexpr (has_member_ka<M>::value) m.ka = ka;
+}
+template <typename M>
+inline void set_kr_if_exists(M& m, double kr) {
+    if constexpr (has_member_kr<M>::value) m.kr = kr;
+}
+template <typename M>
+inline void set_kt_if_exists(M& m, double kt) {
+    if constexpr (has_member_kt<M>::value) m.kt = kt;
+}
+template <typename M>
+inline void set_kd_if_exists(M& m, double kd) {
+    if constexpr (has_member_kd<M>::value) m.kd = kd;
+}
+template <typename P>
+inline void set_ior_if_exists(P& p, double ior) {
+    if constexpr (has_member_ior<P>::value) p.ior = ior;
 }
 
-Color as_color3(const json& j, const char* where) {
-    if (!j.is_array() || j.size() != 3) fail(std::string(where) + " must be [r,g,b]");
-    return Color{ j[0].get<double>(), j[1].get<double>(), j[2].get<double>() };
-}
+// ------------------------ Material wiring ------------------------
+Material parse_color_block_into_material(const json& jcolor) {
+    Material m;
 
-Point3 as_point3(const json& j, const char* where) {
-    if (!j.is_array() || j.size() != 3) fail(std::string(where) + " must be [x,y,z]");
-    return Point3{ j[0].get<double>(), j[1].get<double>(), j[2].get<double>() };
-}
-
-Dir3 as_dir3(const json& j, const char* where) {
-    if (!j.is_array() || j.size() != 3) fail(std::string(where) + " must be [x,y,z]");
-    return Dir3{ j[0].get<double>(), j[1].get<double>(), j[2].get<double>() };
-}
-
-Vec3 as_vec3(const json& j, const char* where) {
-    if (!j.is_array() || j.size() != 3) fail(std::string(where) + " must be [x,y,z]");
-    return Vec3{ j[0].get<double>(), j[1].get<double>(), j[2].get<double>() };
-}
-
-// Materials must outlive primitives; store them here.
-std::vector<std::unique_ptr<Material>>& materials_store() {
-    static std::vector<std::unique_ptr<Material>> store;
-    return store;
-}
-
-const Material* make_material_from_color_block(const json& color)
-{
-    auto m = std::make_unique<Material>();
-
-    if (has(color, "diffuse")) {
-        m->albedo = as_color3(color.at("diffuse"), "color.diffuse");
+    // diffuse / albedo
+    if (jcolor.contains("diffuse")) {
+        m.albedo = as_color3_array(jcolor.at("diffuse"));
+    } else if (jcolor.contains("albedo")) {
+        m.albedo = as_color3_array(jcolor.at("albedo"));
     }
-    if (has(color, "specular")) {
-        auto kscol = as_color3(color.at("specular"), "color.specular");
-        m->ks = (kscol.r + kscol.g + kscol.b) / 3.0;
+
+    // specular -> set ks from magnitude (keeps your existing model)
+    if (jcolor.contains("specular")) {
+        const Color s = as_color3_array(jcolor.at("specular"));
+        m.ks = (s.x + s.y + s.z) / 3.0;
     }
-    if (has(color, "shininess"))
-        m->shininess = as_number(color.at("shininess"), "color.shininess");
-    if (has(color, "kd"))
-        m->kd = as_number(color.at("kd"), "color.kd");
 
-    const Material* ptr = m.get();
-    materials_store().push_back(std::move(m));
-    return ptr;
-}
-
-// forward decl
-std::unique_ptr<Primitive> parse_object_node(const json& j);
-
-// ---------------- primitives ----------------
-
-std::unique_ptr<Primitive> parse_sphere(const json& s)
-{
-    if (!has(s, "position")) fail("sphere.position missing");
-    if (!has(s, "radius"))   fail("sphere.radius missing");
-    if (!has(s, "color"))    fail("sphere.color missing");
-    if (!has(s, "index"))    fail("sphere.index missing");
-
-    Point3 c  = as_point3(s.at("position"), "sphere.position");
-    double r  = as_number (s.at("radius"),   "sphere.radius");
-    int    ix = as_int    (s.at("index"),    "sphere.index");
-
-    const Material* mat = make_material_from_color_block(s.at("color"));
-
-    auto sp = std::make_unique<Sphere>(c, r, ix);
-    sp->mat = mat;
-    return sp;
-}
-
-std::unique_ptr<Primitive> parse_halfspace(const json& h)
-{
-    if (!has(h, "position")) fail("halfSpace.position missing");
-    if (!has(h, "normal"))   fail("halfSpace.normal missing");
-    if (!has(h, "color"))    fail("halfSpace.color missing");
-    if (!has(h, "index"))    fail("halfSpace.index missing");
-
-    Point3 p0 = as_point3(h.at("position"), "halfSpace.position");
-    Dir3   n  = as_dir3  (h.at("normal"),   "halfSpace.normal");
-    int    ix = as_int   (h.at("index"),    "halfSpace.index");
-
-    const Material* mat = make_material_from_color_block(h.at("color"));
-
-    auto hs = std::make_unique<HalfSpace>(p0, n, ix);
-    hs->mat = mat;
-    return hs;
-}
-
-// ---------------- transforms ----------------
-
-std::unique_ptr<Primitive> parse_scaling(const json& node)
-{
-    if (!has(node, "factors")) fail("scaling.factors missing");
-    if (!has(node, "subject")) fail("scaling.subject missing");
-
-    Vec3 s = as_vec3(node.at("factors"), "scaling.factors");
-    auto subject = parse_object_node(node.at("subject"));
-    return std::make_unique<Scaling>(std::move(subject), s.x, s.y, s.z);
-}
-
-std::unique_ptr<Primitive> parse_translation(const json& node)
-{
-    if (!has(node, "factors")) fail("translation.factors missing");
-    if (!has(node, "subject")) fail("translation.subject missing");
-
-    Vec3 t = as_vec3(node.at("factors"), "translation.factors");
-    auto subject = parse_object_node(node.at("subject"));
-    return std::make_unique<Translation>(std::move(subject), t.x, t.y, t.z);
-}
-
-std::unique_ptr<Primitive> parse_rotation(const json& node)
-{
-    if (!has(node, "angle"))     fail("rotation.angle (degrees) missing");
-    if (!has(node, "direction")) fail("rotation.direction missing");
-    if (!has(node, "subject"))   fail("rotation.subject missing");
-
-    double deg = as_number(node.at("angle"),     "rotation.angle");
-    int    ax  = as_int   (node.at("direction"), "rotation.direction");
-    double rad = deg * M_PI / 180.0;
-
-    auto subject = parse_object_node(node.at("subject"));
-
-    switch (ax) {
-        case 0:  return std::make_unique<RotationX>(std::move(subject), rad);
-        case 1:  return std::make_unique<RotationY>(std::move(subject), rad);
-        case 2:  // some docs list 3 for Z; accept both
-        case 3:  return std::make_unique<RotationZ>(std::move(subject), rad);
-        default: fail("rotation.direction must be 0 (x), 1 (y), 2 or 3 (z)");
+    // shininess
+    if (jcolor.contains("shininess")) {
+        m.shininess = jcolor.at("shininess").get<double>();
     }
-    return nullptr;
-}
 
-// ---------------- CSG (N-ary fold) ----------------
-
-std::unique_ptr<Primitive> fold_nary_csg(CSGOp op, const json& arr)
-{
-    if (!arr.is_array() || arr.empty())
-        fail("CSG node expects a non-empty array");
-    std::unique_ptr<Primitive> acc = parse_object_node(arr[0]);
-    for (size_t i = 1; i < arr.size(); ++i) {
-        auto rhs = parse_object_node(arr[i]);
-        acc = std::make_unique<CSG>(op, std::move(acc), std::move(rhs));
+    // NEW: ambient/reflected/refracted — set only if Material has these fields
+    if (jcolor.contains("ambient")) {
+        const Color ka = as_color3_array(jcolor.at("ambient"));
+        set_ka_if_exists(m, ka);
     }
-    return acc;
+    if (jcolor.contains("reflected")) {
+        double kr{};
+        if (jcolor.at("reflected").is_array()) {
+            const Color krC = as_color3_array(jcolor.at("reflected"));
+            kr = (krC.x + krC.y + krC.z) / 3.0;
+        } else {
+            kr = jcolor.at("reflected").get<double>();
+        }
+        set_kr_if_exists(m, kr);
+    }
+    if (jcolor.contains("refracted")) {
+        double kt{};
+        if (jcolor.at("refracted").is_array()) {
+            const Color ktC = as_color3_array(jcolor.at("refracted"));
+            kt = (ktC.x + ktC.y + ktC.z) / 3.0;
+        } else {
+            kt = jcolor.at("refracted").get<double>();
+        }
+        set_kt_if_exists(m, kt);
+    }
+
+    // optional scalar kd override if your Material has kd
+    if (jcolor.contains("kd")) {
+        set_kd_if_exists(m, jcolor.at("kd").get<double>());
+    }
+
+    return m;
 }
 
-std::unique_ptr<Primitive> parse_union(const json& u) {
-    if (!u.is_array()) fail("union must be an array");
-    return fold_nary_csg(CSGOp::Union, u);
-}
-std::unique_ptr<Primitive> parse_intersection(const json& u) {
-    if (!u.is_array()) fail("intersection must be an array");
-    return fold_nary_csg(CSGOp::Intersection, u);
-}
-std::unique_ptr<Primitive> parse_difference(const json& u) {
-    if (!u.is_array()) fail("difference must be an array");
-    return fold_nary_csg(CSGOp::Difference, u);
-}
+// ------------------------ Screen / Medium / Sources ------------------------
+void parse_screen(const json& root, Camera& cam) {
+    if (!root.contains("screen")) return;
+    const json& j = root.at("screen");
 
-// ---------------- dispatcher for a single object node ----------------
+    const int dpi = get_or<int>(j, "dpi", 72);
 
-std::unique_ptr<Primitive> parse_object_node(const json& j)
-{
-    if (!j.is_object() || j.size() != 1)
-        fail("each object node must be a single-key object");
+    // Accept [Lx, Ly] or [Lx, Ly, _]
+    Vec3 dims = Vec3(2.0, 2.0, 0.0);
+    if (j.contains("dimensions")) {
+        dims = as_vecN_from_array_len2_or3(j.at("dimensions"));
+    }
 
-    const auto key = j.begin().key();
-    const json& val = j.begin().value();
+    if (!j.contains("eye") || !j.contains("center") || !j.contains("up")) {
+        throw std::runtime_error("screen requires 'eye', 'center', and 'up'.");
+    }
+    const Vec3 eye    = as_vec3_from_array(j.at("eye"));
+    const Vec3 center = as_vec3_from_array(j.at("center"));
+    const Vec3 up     = as_vec3_from_array(j.at("up"));
 
-    if (key == "sphere")       return parse_sphere(val);
-    if (key == "halfSpace")    return parse_halfspace(val);
-
-    if (key == "scaling")      return parse_scaling(val);
-    if (key == "translation")  return parse_translation(val);
-    if (key == "rotation")     return parse_rotation(val);
-
-    if (key == "union")        return parse_union(val);
-    if (key == "intersection") return parse_intersection(val);
-    if (key == "difference")   return parse_difference(val);
-
-    fail("unknown object node key: " + key);
-    return nullptr;
+    // Adjust this call if your Camera ctor differs.
+    cam = Camera(eye, center, up, dims.x, dims.y, dpi);
 }
 
-// ---------------- top-level blocks ----------------
+void parse_medium(const json& root, Scene& scene) {
+    if (!root.contains("medium")) return;
+    const json& jm = root.at("medium");
 
-void parse_screen(const json& root, Camera& cam)
-{
-    if (!has(root, "screen")) fail("top-level 'screen' missing");
-    const auto& s = root.at("screen");
-
-    if (!has(s, "dpi"))        fail("screen.dpi missing");
-    if (!has(s, "dimensions")) fail("screen.dimensions missing");
-    if (!has(s, "position"))   fail("screen.position missing");
-    if (!has(s, "observer"))   fail("screen.observer missing");
-
-    int dpi = as_int(s.at("dpi"), "screen.dpi");
-    Vec3 dims = as_vec3(s.at("dimensions"), "screen.dimensions"); // [Lx, Ly, _]
-    double Lx = dims.x, Ly = dims.y;
-
-    Point3 P = as_point3(s.at("position"), "screen.position");   // bottom-left
-    Point3 C = as_point3(s.at("observer"), "screen.observer");   // eye
-
-    cam.set_dpi(dpi);
-    cam.set_dimensions(Lx, Ly);
-    cam.set_bottom_left(P);
-    cam.set_observer(C);
-}
-
-void parse_medium(const json& root, Scene& scene)
-{
-    if (!has(root, "medium")) fail("top-level 'medium' missing");
-    const auto& m = root.at("medium");
-
-    if (!has(m, "ambient"))   fail("medium.ambient missing");
-    if (!has(m, "index"))     fail("medium.index missing");
-    if (!has(m, "recursion")) fail("medium.recursion missing");
-
-    scene.ambient         = as_color3(m.at("ambient"), "medium.ambient");
-    scene.medium_index    = as_number(m.at("index"), "medium.index");
-    scene.recursion_limit = as_int   (m.at("recursion"), "medium.recursion");
-}
-
-void parse_sources(const json& root, Scene& scene)
-{
-    if (!has(root, "sources")) fail("top-level 'sources' missing");
-    const auto& arr = root.at("sources");
-    if (!arr.is_array()) fail("'sources' must be an array");
-
-    for (const auto& s : arr) {
-        if (!s.is_object()) fail("sources[] entry must be an object");
-        if (!has(s, "position"))  fail("source.position missing");
-
-        Color I{};
-        if (has(s, "intensity")) I = as_color3(s.at("intensity"), "source.intensity");
-        else if (has(s, "I"))     I = as_color3(s.at("I"),         "source.I");
-        else fail("source.intensity missing (RGB)");
-
-        Point3 pos = as_point3(s.at("position"), "source.position");
-
-        // Scene is expected to define:
-        // struct PointLight { Point3 pos; Color intensity; };
-        scene.point_lights.push_back({pos, I});
+    if (jm.contains("ambient")) {
+        // Scene must expose 'ambient' as Color.
+        scene.ambient = as_color3_array(jm.at("ambient"));
+    }
+    if (jm.contains("index")) {
+        // Scene must expose 'medium_index' (double).
+        scene.medium_index = jm.at("index").get<double>();
+    }
+    if (jm.contains("recursion")) {
+        // Scene must expose 'recursion_limit' (int).
+        scene.recursion_limit = jm.at("recursion").get<int>();
     }
 }
 
-void parse_objects(const json& root, Scene& scene)
-{
-    if (!has(root, "objects")) fail("top-level 'objects' missing");
-    const auto& arr = root.at("objects");
-    if (!arr.is_array()) fail("'objects' must be an array");
+void parse_sources(const json& root, Scene& scene) {
+    if (!root.contains("sources")) return;
+    const json& arr = root.at("sources");
+    if (!arr.is_array()) throw std::runtime_error("'sources' must be an array.");
 
-    for (const auto& node : arr) {
-        auto obj = parse_object_node(node);
-        scene.objects.push_back(std::move(obj));
+    for (const auto& js : arr) {
+        if (!js.contains("position") || !js.contains("intensity")) {
+            throw std::runtime_error("each source needs 'position' and 'intensity'.");
+        }
+        const Vec3 pos = as_vec3_from_array(js.at("position"));
+        const Color I  = as_color3_array(js.at("intensity"));
+
+        // Assumes Scene has point_lights with an element type { Point3 pos; Color I; }
+        scene.point_lights.push_back({ Point3{pos.x, pos.y, pos.z}, I });
     }
 }
 
-} // namespace
+// ------------------------ Object parsing ------------------------
+std::shared_ptr<Primitive> parse_object_node(const json& jnode);
 
-namespace json_loader {
+Material parse_material_from_node(const json& jnode) {
+    if (!jnode.contains("color")) {
+        Material m;
+        m.albedo = Color(0.8, 0.8, 0.8);
+        return m;
+    }
+    return parse_color_block_into_material(jnode.at("color"));
+}
 
-bool load_all_from_string(const std::string& json_text, Scene& scene, Camera& camera)
-{
-    json root;
-    try {
-        root = json::parse(json_text);
-    } catch (const std::exception& e) {
-        fail(std::string("invalid JSON: ") + e.what());
+std::shared_ptr<Primitive> make_sphere(const json& jnode) {
+    if (!jnode.contains("position") || !jnode.contains("radius") || !jnode.contains("index") || !jnode.contains("color")) {
+        throw std::runtime_error("sphere requires 'position', 'radius', 'index', and 'color'.");
+    }
+    const Vec3 c = as_vec3_from_array(jnode.at("position"));
+    const double r = jnode.at("radius").get<double>();
+    Material mat = parse_material_from_node(jnode);
+
+    auto s = std::make_shared<Sphere>(Point3{c.x, c.y, c.z}, r);
+    s->mat = std::make_shared<Material>(mat);
+
+    // set per-primitive ior only if the field exists
+    set_ior_if_exists(*s, jnode.at("index").get<double>());
+
+    return s;
+}
+
+std::shared_ptr<Primitive> make_halfspace(const json& jnode) {
+    if (!jnode.contains("position") || !jnode.contains("normal") || !jnode.contains("index") || !jnode.contains("color")) {
+        throw std::runtime_error("halfspace requires 'position', 'normal', 'index', and 'color'.");
+    }
+    const Vec3 p0 = as_vec3_from_array(jnode.at("position"));
+    const Vec3 n  = as_vec3_from_array(jnode.at("normal"));
+    Material mat = parse_material_from_node(jnode);
+
+    auto h = std::make_shared<HalfSpace>(Point3{p0.x, p0.y, p0.z}, Dir3{n.x, n.y, n.z}.normalized());
+    h->mat = std::make_shared<Material>(mat);
+
+    set_ior_if_exists(*h, jnode.at("index").get<double>());
+
+    return h;
+}
+
+std::shared_ptr<Primitive> make_transform(const json& jnode) {
+    if (!jnode.contains("operation") || !jnode.contains("object")) {
+        throw std::runtime_error("transform requires 'operation' and nested 'object'.");
+    }
+    auto child = parse_object_node(jnode.at("object"));
+    if (!child) return nullptr;
+
+    const std::string op = jnode.at("operation").get<std::string>();
+    if (op == "translation") {
+        const Vec3 t = as_vec3_from_array(jnode.at("value"));
+        return std::make_shared<Translation>(child, Vec3{t.x, t.y, t.z});
+    } else if (op == "scaling") {
+        const Vec3 s = as_vec3_from_array(jnode.at("value"));
+        return std::make_shared<Scaling>(child, Vec3{s.x, s.y, s.z});
+    } else if (op == "rotation") {
+        const json& v = jnode.at("value");
+        if (!v.is_array() || v.size() != 2) {
+            throw std::runtime_error("rotation.value must be [axis, angle_deg].");
+        }
+        const int axis = v[0].get<int>();       // 0=x, 1=y, 2(or 3)=z
+        const double angle = v[1].get<double>();
+        return std::make_shared<Rotation>(child, axis, angle);
+    }
+    throw std::runtime_error("unknown transform operation: " + op);
+}
+
+std::shared_ptr<Primitive> make_csg(const json& jnode) {
+    if (!jnode.contains("operator") || !jnode.contains("left") || !jnode.contains("right")) {
+        throw std::runtime_error("csg requires 'operator', 'left', 'right'.");
+    }
+    auto A = parse_object_node(jnode.at("left"));
+    auto B = parse_object_node(jnode.at("right"));
+    const std::string op = jnode.at("operator").get<std::string>();
+
+    CSGOp csgop;
+    if      (op == "union")        csgop = CSGOp::Union;
+    else if (op == "intersection") csgop = CSGOp::Intersection;
+    else if (op == "difference")   csgop = CSGOp::Difference;
+    else throw std::runtime_error("unknown csg operator: " + op);
+
+    return std::make_shared<CSG>(A, B, csgop);
+}
+
+std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
+    // Each object is a single-key dict: {"sphere": {...}} etc.
+    if (!jnode.is_object() || jnode.size() != 1) {
+        throw std::runtime_error("each object node must be a one-entry object");
+    }
+    const auto it = jnode.begin();
+    const std::string kind = it.key();
+    const json& value = it.value();
+
+    if (kind == "sphere")     return make_sphere(value);
+    if (kind == "halfspace")  return make_halfspace(value);
+    if (kind == "transform")  return make_transform(value);
+    if (kind == "csg")        return make_csg(value);
+
+    throw std::runtime_error("unknown object kind: " + kind);
+}
+
+} // anonymous namespace
+
+// ------------------------ public API ------------------------
+namespace jsonio {
+
+Material make_material_from_color_block(const void* json_color_any) {
+    const json& j = *reinterpret_cast<const json*>(json_color_any);
+    return parse_color_block_into_material(j);
+}
+
+bool load_scene_from_json_text(const std::string& json_text, Scene& scene, Camera& cam) {
+    json j = json::parse(json_text);
+
+    parse_screen(j, cam);
+    parse_medium(j, scene);
+    parse_sources(j, scene);
+
+    if (j.contains("objects")) {
+        const json& arr = j.at("objects");
+        if (!arr.is_array()) throw std::runtime_error("'objects' must be an array.");
+        for (const auto& node : arr) {
+            auto prim = parse_object_node(node);
+            if (prim) scene.objects.push_back(std::move(prim));
+        }
     }
 
-    parse_screen(root, camera);
-    parse_medium(root, scene);
-    parse_sources(root, scene);
-    parse_objects(root, scene);
     return true;
 }
 
-bool load_all_from_file(const std::string& path, Scene& scene, Camera& camera)
-{
-    std::ifstream in(path);
-    if (!in) fail("cannot open file: " + path);
+bool load_scene_from_json(const std::string& filename, Scene& scene, Camera& cam) {
+    std::ifstream ifs(filename);
+    if (!ifs) {
+        throw std::runtime_error("Cannot open JSON file: " + filename);
+    }
     std::ostringstream ss;
-    ss << in.rdbuf();
-    return load_all_from_string(ss.str(), scene, camera);
+    ss << ifs.rdbuf();
+    return load_scene_from_json_text(ss.str(), scene, cam);
 }
 
-} // namespace json_loader
+} // namespace jsonio

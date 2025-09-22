@@ -1,15 +1,23 @@
 #pragma once
+
 #include <string>
+#include <stdexcept>
 
-struct Scene;
+// Forward declarations — your actual headers define these.
 struct Camera;
+struct Scene;
+struct Material;
 
-namespace json_loader {
+namespace jsonio {
 
-// Load from a JSON file on disk.
-bool load_all_from_file(const std::string& path, Scene& scene, Camera& camera);
+// Load from file path. Fills Scene and Camera. Throws on hard parse errors.
+bool load_scene_from_json(const std::string& filename, Scene& scene, Camera& cam);
 
-// Load from a JSON text string already in memory.
-bool load_all_from_string(const std::string& json_text, Scene& scene, Camera& camera);
+// Load from in-memory JSON text (same behavior as above).
+bool load_scene_from_json_text(const std::string& json_text, Scene& scene, Camera& cam);
 
-} // namespace json_loader
+// Helper: build a Material from a "color" JSON block.
+// The pointer must point to a nlohmann::json object (kept void* to keep the header light).
+Material make_material_from_color_block(const void* json_color_any);
+
+} // namespace jsonio
