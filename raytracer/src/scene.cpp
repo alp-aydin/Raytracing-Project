@@ -15,3 +15,14 @@ bool Scene::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     }
     return hit_any;
 }
+
+bool Scene::occluded(const Ray& r, double tmin, double tmax) const {
+    Hit tmp;
+    for (const Primitive* obj : objects) {
+        if (!obj) continue;
+        if (obj->intersect(r, tmin, tmax, tmp)) {
+            return true;
+        }
+    }
+    return false;
+}
