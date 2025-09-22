@@ -28,6 +28,9 @@ struct Primitive {
     const Material* mat{nullptr};
     virtual ~Primitive() = default;
     virtual bool intersect(const Ray& r, double tmin, double tmax, Hit& out) const = 0;
+    virtual bool interval(const Ray& ray,
+                      double& tEnter, double& tExit,
+                      Hit& enterHit, Hit& exitHit) const { return false; }
 };
 
 // Sphere
@@ -35,4 +38,7 @@ struct Sphere : Primitive {
     Point3 c; double r{1.0};
     Sphere(const Point3& C, double R, const Material* M){ c=C; r=R; mat=M; }
     bool intersect(const Ray& r, double tmin, double tmax, Hit& out) const override;
+    bool interval(const Ray& ray,
+                  double& tEnter, double& tExit,
+                  Hit& enterHit, Hit& exitHit) const override;
 };
