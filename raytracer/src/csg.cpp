@@ -16,11 +16,18 @@ namespace {
         EdgeType type{};   // Enter or Exit
         int who{};         // 0 = A, 1 = B
         Hit hit{};         // carry full hit (p, n, mat)
-        bool operator<(const Event& o) const { return t < o.t; }
     };
 
+    // Sort by t; for ties process Enter before Exit; then A before B (deterministic).
+    inline bool event_less(const Event& a, const Event& b) {
+        if (a.t < b.t - EPS) return true;
+        if (a.t > b.t + EPS) return false;
+        if (a.type != b.type) return a.type == EdgeType::Enter;
+        return a.who < b.who;
+    }
+
     inline bool inside_at_origin(double t0, double t1) {
-        // Are we “already inside” at t=0?  (enter < 0 < exit)
+        // "inside at t=0" if enter < 0 < exit. Works with +/-INF.
         return (t0 < EPS) && (t1 > EPS);
     }
 
@@ -50,18 +57,18 @@ bool CSG::interval(const Ray& ray,
 
     if (!hitA && !hitB) return false;
 
-    // Build boundary events
+    // Build boundary events (skip infinite sentinels; they only indicate openness)
     std::vector<Event> ev;
     ev.reserve(4);
     if (hitA) {
-        ev.push_back(Event{ta0, EdgeType::Enter, 0, ha0});
-        ev.push_back(Event{ta1, EdgeType::Exit,  0, ha1});
+        if (std::isfinite(ta0)) ev.push_back(Event{ta0, EdgeType::Enter, 0, ha0});
+        if (std::isfinite(ta1)) ev.push_back(Event{ta1, EdgeType::Exit,  0, ha1});
     }
     if (hitB) {
-        ev.push_back(Event{tb0, EdgeType::Enter, 1, hb0});
-        ev.push_back(Event{tb1, EdgeType::Exit,  1, hb1});
+        if (std::isfinite(tb0)) ev.push_back(Event{tb0, EdgeType::Enter, 1, hb0});
+        if (std::isfinite(tb1)) ev.push_back(Event{tb1, EdgeType::Exit,  1, hb1});
     }
-    std::sort(ev.begin(), ev.end());
+    std::sort(ev.begin(), ev.end(), event_less);
 
     bool inA = hitA && inside_at_origin(ta0, ta1);
     bool inB = hitB && inside_at_origin(tb0, tb1);
@@ -73,17 +80,28 @@ bool CSG::interval(const Ray& ray,
     bool haveEnter = false;
     Hit ent{}, ext{};
 
+    // If we already start inside the result at t=0, the interval begins at 0.
+    // This ensures callers (like intersect) can still pick the first EXIT as the visible hit.
+    if (inR) {
+        haveEnter = true;
+        tEnter = 0.0;
+        ent.t = 0.0;
+        ent.p = ray.o;              // sentinel; renderer will usually skip t=0 with a tmin epsilon
+        ent.n = Dir3{0,0,0};
+        ent.mat = matA ? matA : (hitA ? ha0.mat : (hitB ? hb0.mat : nullptr));
+    }
+
     for (const auto& e : ev) {
         const bool wasIn = inR;
 
-        // toggle which child we are inside based on the event
+        // Update inA/inB from this boundary
         if (e.who == 0) inA = (e.type == EdgeType::Enter);
         else            inB = (e.type == EdgeType::Enter);
 
-        inR = combine(inA, inB, op_);
+        const bool nowIn = combine(inA, inB, op_);
 
-        // Outside -> Inside: record entry
-        if (!wasIn && inR && e.t >= EPS) {
+        // Outside -> Inside: record entry (ignore very negative crossings)
+        if (!wasIn && nowIn && e.t >= -EPS) {
             haveEnter = true;
             tEnter = e.t;
             ent = e.hit;
@@ -97,7 +115,7 @@ bool CSG::interval(const Ray& ray,
         }
 
         // Inside -> Outside: record exit and finish
-        if (wasIn && !inR) {
+        if (wasIn && !nowIn) {
             tExit = e.t;
             ext = e.hit;
 
@@ -105,16 +123,19 @@ bool CSG::interval(const Ray& ray,
                 flip_dir3(ext.n);
                 if (matA) ext.mat = matA;
             }
+            inR = nowIn;
             break;
         }
+
+        inR = nowIn;
     }
 
     if (!haveEnter) return false;
 
-    // If we never exited, the interval is open-ended
+    // If we started inside and never saw a boundary, or if the last boundary didn't close it, it's open-ended.
     if (!(tExit > tEnter + EPS)) {
         tExit = INF;
-        ext = ent;
+        // ext is not meaningful here; leave as-is (callers normally only care about tExit)
     }
 
     enterHit = ent;

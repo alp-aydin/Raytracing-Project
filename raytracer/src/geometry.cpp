@@ -58,3 +58,56 @@ bool Sphere::interval(const Ray& ray,
 
     return true;
 }
+
+// ---------------- HalfSpace ----------------
+bool HalfSpace::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
+    const double ndotd = n.dot(r.d);
+    if (std::abs(ndotd) < 1e-12) return false; // parallel => no finite *surface* hit
+
+    const double t = n.dot(p0 - r.o) / ndotd;
+    if (t < tmin || t > tmax) return false;
+
+    Hit h;
+    h.t = t;
+    h.p = r.at(t);
+    h.set_face_normal(r, n);
+    h.mat = mat;
+    out = h;
+    return true;
+}
+
+// Inside set is S = { X | n·(X - p0) >= 0 }.
+// f(t) = n·(r.o + t r.d - p0) = f0 + t * ndotd.
+// ndotd > 0  => inside for t >= tPlane  (enter at tPlane, exit = +∞).
+// ndotd < 0  => inside for t <= tPlane  (enter = -∞, exit at tPlane).
+// ndotd = 0  => parallel: either everywhere inside (f0>=0) or empty (f0<0).
+bool HalfSpace::interval(const Ray& r, double& tEnter, double& tExit,
+                         Hit& enterHit, Hit& exitHit) const
+{
+    const double ndotd = n.dot(r.d);
+    const double f0    = n.dot(r.o - p0);
+
+    if (std::abs(ndotd) < 1e-12) {
+        if (f0 >= 0.0) {
+            tEnter = -kINF; tExit =  kINF;
+            enterHit.t = tEnter; enterHit.p = r.o; enterHit.set_face_normal(r, n); enterHit.mat = mat;
+            exitHit .t = tExit ; exitHit .p = r.o; exitHit .set_face_normal(r, n); exitHit .mat = mat;
+            return true;
+        }
+        return false; // entirely outside
+    }
+
+    const double tPlane = -f0 / ndotd;
+
+    if (ndotd > 0.0) {
+        tEnter = tPlane; tExit = kINF;
+        enterHit.t = tEnter; enterHit.p = r.at(tEnter); enterHit.set_face_normal(r, n); enterHit.mat = mat;
+        exitHit .t = tExit ; exitHit .p = r.o;           exitHit .set_face_normal(r, n); exitHit .mat = mat;
+        return true;
+    } else {
+        tEnter = -kINF; tExit = tPlane;
+        enterHit.t = tEnter; enterHit.p = r.o;           enterHit.set_face_normal(r, n); enterHit.mat = mat;
+        exitHit .t = tExit ; exitHit .p = r.at(tExit );  exitHit .set_face_normal(r, n); exitHit .mat = mat;
+        return true;
+    }
+}

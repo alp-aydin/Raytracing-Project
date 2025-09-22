@@ -1,42 +1,41 @@
-#ifndef CAMERA_H
-#define CAMERA_H
-
+#pragma once
 #include "core.h"
 
-// Screen defined by:
-//  - P : bottom-left point on the image plane
-//  - U : full-width edge vector (along +x of screen coords)
-//  - V : full-height edge vector (along +y of screen coords)
-//  - dpi : pixels per unit along U and V (SAME for both axes, per your spec)
-//
-// Pixel center (ix, iy), 0-based:
-//   Xp = P + ((ix + 0.5) / dpi) * U + ((iy + 0.5) / dpi) * V
-//
-// Notes:
-// - U and V can be arbitrary (supports tilted screens). For axis-aligned in XY plane,
-//   set U = {sizeX, 0, 0}, V = {0, sizeY, 0}, and P.z constant.
-// - We normalize the primary ray direction here so later code can assume ||d|| = 1.
+// Screen defined by bottom-left P, sizes (Lx,Ly), and dpi.
+// The screen lies in the XY-plane by default (U along +X, V along +Y).
+struct ScreenSpec {
+    Point3 P{0,0,0};   // bottom-left corner of the screen
+    double Lx{1.0};    // width  in scene units
+    double Ly{1.0};    // height in scene units
+    int    dpi{100};   // dots (pixels) per unit length
 
-struct Screen {
-    Point3 P;   // bottom-left point on the screen plane
-    Dir3   U;   // horizontal edge vector (full width)
-    Dir3   V;   // vertical   edge vector (full height)
-    int   dpi{1}; // pixels per unit along U and V (must be > 0)
+    inline int nx() const { return std::max(1, int(std::round(Lx * dpi))); }
+    inline int ny() const { return std::max(1, int(std::round(Ly * dpi))); }
 
-    // Convenience: pixel dimensions implied by geometry
-    int width () const { return static_cast<int>(std::round(U.length() * dpi)); }
-    int height() const { return static_cast<int>(std::round(V.length() * dpi)); }
+    // Precomputed basis vectors for convenience (default XY plane)
+    inline Dir3 U() const { return Dir3{Lx, 0.0, 0.0}; }
+    inline Dir3 V() const { return Dir3{0.0, Ly, 0.0}; }
 };
 
 struct Camera {
-    Point3   eye;     // observer position
-    Screen screen;  // screen definition
+    Point3 eye{0,0,1};  // observer C
+    ScreenSpec screen;  // physical screen definition
 
-    // World-space point at the CENTER of pixel (ix, iy).
-    Point3 pixelCenter(int ix, int iy) const;
+    // Generate primary ray through pixel center (i,j), 0 <= i < nx, 0 <= j < ny.
+    inline Ray generate_ray(int i, int j) const {
+        const int nx = screen.nx();
+        const int ny = screen.ny();
 
-    // Primary ray from eye through pixel center; dir is normalized.
-    Ray makeRay(int ix, int iy) const;
+        // normalized pixel coords in [0,1] with center sampling
+        const double sx = (double(i) + 0.5) / double(nx);
+        const double sy = (double(j) + 0.5) / double(ny);
+
+        // point on screen: S = P + sx*U + sy*V
+        const Point3 S = screen.P
+                       + screen.U() * sx
+                       + screen.V() * sy;
+
+        Dir3 d = (S - eye).normalized();
+        return Ray{eye, d};
+    }
 };
-
-#endif // CAMERA_H
