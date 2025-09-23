@@ -59,7 +59,7 @@ struct HalfSpace : Primitive {
         mat = M;
     }
     bool intersect(const Ray& r, double tmin, double tmax, Hit& out) const override;
-    bool interval (const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const override;
+    bool interval(const Ray&, double&, double&, Hit&, Hit&) const override;
 };
 
 

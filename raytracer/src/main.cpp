@@ -33,10 +33,6 @@ static std::string slurp(const std::string& path){
     std::ostringstream ss; ss << ifs.rdbuf(); return ss.str();
 }
 
-static inline unsigned char toByte(double x) {
-    x = std::max(0.0, std::min(1.0, x));
-    return static_cast<unsigned char>(std::lround(x * 255.0));
-}
 
 static void write_png(const std::string& outPath, int W, int H, const std::vector<Color>& fb) {
     // Flip vertically so (0,0) ends up top-left in the PNG

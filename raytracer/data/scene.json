@@ -1,0 +1,102 @@
+{
+  "screen": {
+    "dpi": 120,
+    "dimensions": [32.0, 18.0],
+    "position": [-16.0, -9.0, 0.0],
+    "observer": [0.0, 0.5, -28.0]
+  },
+  "medium": {
+    "ambient": [0.07, 0.07, 0.09],
+    "index": 1.0,
+    "recursion": 1
+  },
+  "sources": [
+    { "position": [5.5, 5.5, 6.5],  "intensity": [280.0, 60.0, 320.0] },
+    { "position": [-6.5, 4.5, 7.0], "intensity": [60.0, 280.0, 320.0] },
+    { "position": [0.0, 7.5, 10.5], "intensity": [80.0, 80.0, 200.0] }
+  ],
+  "background": [0.06, 0.05, 0.10],
+  "objects": [
+    {
+      "halfSpace": {
+        "position": [0.0, -2.2, 0.0],
+        "normal": [0.0, 1.0, 0.0],
+        "index": 0,
+        "color": { "albedo": [0.08, 0.08, 0.10], "kd": 0.95, "specular": [0.10, 0.12, 0.18], "shininess": 22 }
+      }
+    },
+    {
+      "sphere": {
+        "position": [-6.2, -0.9, 6.0],
+        "radius": 1.6,
+        "index": 0,
+        "color": { "albedo": [0.95, 0.25, 0.70], "kd": 1.0, "specular": [0.28, 0.18, 0.36], "shininess": 34 }
+      }
+    },
+    {
+      "sphere": {
+        "position": [-1.0, -0.85, 6.8],
+        "radius": 1.9,
+        "index": 0,
+        "color": { "albedo": [0.95, 0.75, 0.30], "kd": 1.0, "specular": [0.22, 0.20, 0.14], "shininess": 30 }
+      }
+    },
+    {
+      "sphere": {
+        "position": [2.8, -0.6, 5.0],
+        "radius": 1.25,
+        "index": 0,
+        "color": { "albedo": [0.10, 0.85, 0.80], "kd": 1.0, "specular": [0.16, 0.22, 0.24], "shininess": 30 }
+      }
+    },
+    {
+      "rotation": {
+        "direction": 1,
+        "angle": 18.0,
+        "subject": {
+          "translation": {
+            "factors": [7.2, -0.3, 8.5],
+            "subject": {
+              "scaling": {
+                "factors": [1.0, 1.6, 1.0],
+                "subject": {
+                  "sphere": {
+                    "position": [0.0, 0.0, 0.0],
+                    "radius": 1.2,
+                    "index": 0,
+                    "color": { "albedo": [0.25, 0.45, 0.98], "kd": 1.0, "specular": [0.20, 0.26, 0.34], "shininess": 34 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "difference": [
+        {
+          "sphere": {
+            "position": [-2.0, -0.9, 10.2],
+            "radius": 2.1,
+            "index": 0,
+            "color": { "albedo": [0.70, 0.30, 0.95], "kd": 1.0, "specular": [0.22, 0.18, 0.28], "shininess": 32 }
+          }
+        },
+        {
+          "translation": {
+            "factors": [0.9, 0.1, 0.0],
+            "subject": {
+              "sphere": {
+                "position": [0.0, 0.0, 10.2],
+                "radius": 1.2,
+                "index": 0,
+                "color": { "albedo": [0.2, 0.2, 0.2], "kd": 1.0, "specular": [0.0, 0.0, 0.0], "shininess": 8 }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": 5,
+  "configurePresets": [
+    {
+      "name": "ninja-vcpkg",
+      "displayName": "Ninja + vcpkg (Release)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ninja-vcpkg",
+      "configurePreset": "ninja-vcpkg"
+    }
+  ]
+}
