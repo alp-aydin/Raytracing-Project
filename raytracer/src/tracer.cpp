@@ -13,13 +13,19 @@ Color Tracer::trace(const Ray& r) const {
 }
 
 void Tracer::render(std::vector<Color>& framebuffer) const {
-    if (!scene || !camera) return;
-    framebuffer.assign(static_cast<std::size_t>(width)*height, Color(0,0,0));
+    if (!scene || !camera || width <= 0 || height <= 0) return;
+    
+    // Fixed: Better bounds checking and overflow prevention
+    const size_t total_pixels = static_cast<size_t>(width) * height;
+    framebuffer.assign(total_pixels, Color(0,0,0));
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
+            const size_t index = static_cast<size_t>(y) * width + x;
+            if (index >= total_pixels) continue; // Safety check
+            
             Ray pr = camera->generate_ray(x, y);
-            framebuffer[static_cast<std::size_t>(y)*width + x] = trace(pr);
+            framebuffer[index] = trace(pr);
         }
     }
 }

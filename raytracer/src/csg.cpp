@@ -49,107 +49,121 @@ bool CSG::interval(const Ray& ray,
 {
     if (!A_ || !B_) return false;
 
-    // Query child intervals
+    // Child intervals
     double ta0{}, ta1{}, tb0{}, tb1{};
     Hit ha0{}, ha1{}, hb0{}, hb1{};
     const bool hitA = A_->interval(ray, ta0, ta1, ha0, ha1);
     const bool hitB = B_->interval(ray, tb0, tb1, hb0, hb1);
-
     if (!hitA && !hitB) return false;
 
-    // Build boundary events (skip infinite sentinels; they only indicate openness)
-    std::vector<Event> ev;
-    ev.reserve(4);
-    if (hitA) {
-        if (std::isfinite(ta0)) ev.push_back(Event{ta0, EdgeType::Enter, 0, ha0});
-        if (std::isfinite(ta1)) ev.push_back(Event{ta1, EdgeType::Exit,  0, ha1});
-    }
-    if (hitB) {
-        if (std::isfinite(tb0)) ev.push_back(Event{tb0, EdgeType::Enter, 1, hb0});
-        if (std::isfinite(tb1)) ev.push_back(Event{tb1, EdgeType::Exit,  1, hb1});
-    }
+    // Build boundary events (finite only)
+    struct Ev { double t; EdgeType type; int who; Hit h; };
+    auto add = [](std::vector<Ev>& v, double t, EdgeType type, int who, const Hit& h){
+        if (std::isfinite(t)) v.push_back(Ev{t, type, who, h});
+    };
+    std::vector<Ev> ev; ev.reserve(4);
+    if (hitA) { add(ev, ta0, EdgeType::Enter, 0, ha0); add(ev, ta1, EdgeType::Exit, 0, ha1); }
+    if (hitB) { add(ev, tb0, EdgeType::Enter, 1, hb0); add(ev, tb1, EdgeType::Exit, 1, hb1); }
+
+    auto event_less = [](const Ev& a, const Ev& b){
+        if (std::abs(a.t - b.t) > 1e-6) return a.t < b.t;
+        // On ties: process ENTERS before EXITS; if still tied, A before B
+        if (a.type != b.type) return a.type == EdgeType::Enter;
+        return a.who < b.who;
+    };
     std::sort(ev.begin(), ev.end(), event_less);
 
+    // State at t=0 (before first boundary)
+    auto inside_at_origin = [](double t0, double t1){
+        return (t0 < 1e-6) && (t1 > 1e-6);
+    };
     bool inA = hitA && inside_at_origin(ta0, ta1);
     bool inB = hitB && inside_at_origin(tb0, tb1);
-    bool inR = combine(inA, inB, op_);
 
-    // Keep a pointer to A's material (used on faces cut by B in A\B)
-    const Material* matA = hitA ? ha0.mat : nullptr;
+    auto combine = [&](bool a, bool b){
+        switch (op_) {
+            case CSGOp::Union:        return a || b;
+            case CSGOp::Intersection: return a && b;
+            case CSGOp::Difference:   return a && !b;  // A \ B
+        }
+        return false;
+    };
+
+    bool inR = combine(inA, inB);
 
     bool haveEnter = false;
-    Hit ent{}, ext{};
+    Hit  hEnter{}, hExit{};
 
-    // If we already start inside the result at t=0, the interval begins at 0.
-    // This ensures callers (like intersect) can still pick the first EXIT as the visible hit.
+    // If we already start inside, mark an entry at t=0 (renderer tmin should skip it)
+    double tEnt = 0.0, tExt = INF;
     if (inR) {
         haveEnter = true;
-        tEnter = 0.0;
-        ent.t = 0.0;
-        ent.p = ray.o;              // sentinel; renderer will usually skip t=0 with a tmin epsilon
-        ent.n = Dir3{0,0,0};
-        ent.mat = matA ? matA : (hitA ? ha0.mat : (hitB ? hb0.mat : nullptr));
+        tEnt = 0.0;
+        hEnter.t = 0.0;
+        hEnter.p = ray.o;
+        hEnter.n = Dir3{0,0,0};
+        hEnter.mat = (inA && ha0.mat) ? ha0.mat : (inB ? hb0.mat : nullptr);
+        hEnter.front_face = true;
     }
 
+    // Sweep over boundaries
     for (const auto& e : ev) {
-        const bool wasIn = inR;
+        const bool before = inR;
 
-        // Update inA/inB from this boundary
-        if (e.who == 0) inA = (e.type == EdgeType::Enter);
-        else            inB = (e.type == EdgeType::Enter);
+        // flip the child state that this event belongs to
+        if (e.who == 0) inA = (e.type == EdgeType::Enter) ? true : false;
+        else            inB = (e.type == EdgeType::Enter) ? true : false;
 
-        const bool nowIn = combine(inA, inB, op_);
+        const bool after = combine(inA, inB);
 
-        // Outside -> Inside: record entry (ignore very negative crossings)
-        if (!wasIn && nowIn && e.t >= -EPS) {
+        if (!before && after) {
+            // We are ENTERING the result at this boundary
             haveEnter = true;
-            tEnter = e.t;
-            ent = e.hit;
-
-            if (op_ == CSGOp::Difference && e.who == 1) {
-                // For A\B, boundaries contributed by B must flip normals
-                // and use A’s material (exposed cut surface).
-                flip_dir3(ent.n);
-                if (matA) ent.mat = matA;
+            tEnt = e.t;
+            hEnter = e.h;
+            // For A\B entering via B's EXIT (who=1, Exit) we keep B's hit, but flip normal because
+            // that face is seen from the "inside" of B.
+            if (op_ == CSGOp::Difference && e.who == 1 && e.type == EdgeType::Exit) {
+                hEnter.set_face_normal(ray, Dir3{-e.h.n.x, -e.h.n.y, -e.h.n.z});
             }
-        }
-
-        // Inside -> Outside: record exit and finish
-        if (wasIn && !nowIn) {
-            tExit = e.t;
-            ext = e.hit;
-
-            if (op_ == CSGOp::Difference && e.who == 1) {
-                flip_dir3(ext.n);
-                if (matA) ext.mat = matA;
+        } else if (before && !after) {
+            // We are EXITING the result at this boundary
+            tExt = e.t;
+            hExit = e.h;
+            // For A\B exiting via B's ENTER (who=1, Enter), flip normal
+            if (op_ == CSGOp::Difference && e.who == 1 && e.type == EdgeType::Enter) {
+                hExit.set_face_normal(ray, Dir3{-e.h.n.x, -e.h.n.y, -e.h.n.z});
             }
-            inR = nowIn;
+            // First full interval is enough
             break;
         }
 
-        inR = nowIn;
+        inR = after;
     }
 
-    if (!haveEnter) return false;
+    if (!haveEnter || !std::isfinite(tExt)) return false;
 
-    // If we started inside and never saw a boundary, or if the last boundary didn't close it, it's open-ended.
-    if (!(tExit > tEnter + EPS)) {
-        tExit = INF;
-        // ext is not meaningful here; leave as-is (callers normally only care about tExit)
-    }
-
-    enterHit = ent;
-    exitHit  = ext;
+    tEnter = tEnt; tExit = tExt;
+    enterHit = hEnter; exitHit = hExit;
     return true;
 }
 
-bool CSG::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const
-{
-    double t0{}, t1{};
-    Hit h0{}, h1{};
-    if (!interval(ray, t0, t1, h0, h1)) return false;
 
-    if (t0 >= tmin && t0 <= tmax) { out = h0; return true; }
-    if (t1 >= tmin && t1 <= tmax) { out = h1; return true; }
-    return false;
+bool CSG::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
+    double tEnter, tExit;
+    Hit hEnter, hExit;
+    if (!interval(r, tEnter, tExit, hEnter, hExit)) return false;
+
+    // choose first time inside the solid
+    const double t = std::max(tEnter, tmin);
+    if (!(t < tExit && t < tmax)) return false;
+
+    // use the enter hit's material/normal; clamp t and recompute point
+    out = hEnter;
+    out.t = t;
+    out.p = Point3{ r.o.x + r.d.x * t,
+                    r.o.y + r.d.y * t,
+                    r.o.z + r.d.z * t };
+    return true;
 }
+

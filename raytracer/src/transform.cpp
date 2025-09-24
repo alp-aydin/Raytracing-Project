@@ -14,7 +14,7 @@ static inline Dir3 rot_apply_dir(const Dir3& v, Axis ax, double ang) {
 }
 static inline Dir3  rot_apply_dir_inv(const Dir3& v, Axis ax, double ang) { return rot_apply_dir(v, ax, -ang); }
 static inline Point3 rot_apply_pt(const Point3& p, Axis ax, double ang) {
-    // rotate as if it were a direction, since rotation doesn’t use translation
+    // rotate as if it were a direction, since rotation doesn't use translation
     Dir3 v{p.x, p.y, p.z};
     Dir3 r = rot_apply_dir(v, ax, ang);
     return Point3{r.x, r.y, r.z};
@@ -62,7 +62,12 @@ bool Scaling::intersect(const Ray& r, double tmin, double tmax, Hit& out) const 
     auto mapN = [&](const Dir3& n)->Dir3{
         Dir3 w{ n.x / s.x, n.y / s.y, n.z / s.z };
         double L = std::sqrt(w.x*w.x + w.y*w.y + w.z*w.z);
-        if (L > 0.0){ w.x/=L; w.y/=L; w.z/=L; }
+        // Fixed: Better handling of small normals
+        if (L > kEPS) { 
+            w.x/=L; w.y/=L; w.z/=L; 
+        } else {
+            w = Dir3{0,1,0}; // Fallback normal
+        }
         return w;
     };
     Point3 Pw = mapP(h.p);
@@ -85,7 +90,12 @@ bool Scaling::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHi
     auto mapN = [&](const Dir3& n)->Dir3{
         Dir3 w{ n.x / s.x, n.y / s.y, n.z / s.z };
         double L = std::sqrt(w.x*w.x + w.y*w.y + w.z*w.z);
-        if (L > 0.0){ w.x/=L; w.y/=L; w.z/=L; }
+        // Fixed: Better handling of small normals
+        if (L > kEPS) { 
+            w.x/=L; w.y/=L; w.z/=L; 
+        } else {
+            w = Dir3{0,1,0}; // Fallback normal
+        }
         return w;
     };
     enterHit.p = mapP(enterHit.p);

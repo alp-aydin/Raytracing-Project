@@ -32,7 +32,7 @@ struct Vec3 {
     double length() const { return std::sqrt(dot(*this)); }
     Vec3 normalized() const {
         double L = length();
-        return (L>0)? (*this)/L : *this;
+        return (L>kEPS)? (*this)/L : *this; // Fixed: Use kEPS instead of 0
     }
 };
 
@@ -49,7 +49,10 @@ struct Point3 : public Vec3 {
 struct Dir3 : public Vec3 {
     using Vec3::Vec3;   // inherit constructors
     Dir3(const Vec3& v) : Vec3(v){}
-    Dir3 normalized() const { return Dir3(Vec3::normalized()); } // aded this line to get rid of 
+    Dir3 normalized() const { 
+        double L = length();
+        return (L > kEPS) ? Dir3(Vec3::normalized()) : Dir3{0,1,0}; // Fixed: Better fallback
+    }
 };
 
 //

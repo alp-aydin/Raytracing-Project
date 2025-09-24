@@ -21,14 +21,21 @@ struct Camera {
     Point3 eye{0,0,1};  // observer C
     ScreenSpec screen;  // physical screen definition
 
-    // Generate primary ray through pixel center (i,j), 0 <= i < nx, 0 <= j < ny.
+    // Fixed: Added bounds checking to prevent invalid ray generation
     inline Ray generate_ray(int i, int j) const {
         const int nx = screen.nx();
         const int ny = screen.ny();
 
+        // Bounds checking
+        if (i < 0 || i >= nx || j < 0 || j >= ny) {
+            // Return ray pointing forward as fallback
+            return Ray{eye, Dir3{0,0,-1}};
+        }
+
         // normalized pixel coords in [0,1] with center sampling
         const double sx = (double(i) + 0.5) / double(nx);
-        const double sy = (double(j) + 0.5) / double(ny);
+        const int jf = ny - 1 - j;
+        const double sy = (double(jf) + 0.5) / double(ny);
 
         // point on screen: S = P + sx*U + sy*V
         const Point3 S = screen.P
