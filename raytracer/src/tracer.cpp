@@ -93,50 +93,44 @@ double Tracer::get_edge_strength(int x, int y) const {
 
 Color Tracer::apply_crosshatch(const Color& baseColor, double luminance, int x, int y) const {
     // Multiple crosshatch patterns for different density levels
-    
-    // Pattern 1: Diagonal lines (45 degrees)
+
+    // Base patterns
     bool diag1 = ((x + y) % 4) < 1;
-    
-    // Pattern 2: Diagonal lines (-45 degrees)  
     bool diag2 = ((x - y) % 4) < 1;
-    
-    // Pattern 3: Horizontal lines
     bool horizontal = (y % 3) < 1;
-    
-    // Pattern 4: Vertical lines
-    bool vertical = (x % 3) < 1;
-    
-    // Pattern 5: Fine diagonal grid
+    bool vertical   = (x % 3) < 1;
+
+    // Fine patterns
     bool fineDiag1 = ((x + y) % 2) < 1;
     bool fineDiag2 = ((x - y) % 2) < 1;
-    
-    // Apply patterns based on darkness level
+
     bool drawLine = false;
-    
-    if (luminance > 0.8) {
-        // Very dark - use all patterns
+
+    // NEW: super-dense tier (for black materials -> luminance forced to 1.0)
+    if (luminance >= 0.95) {
+        // tighten the base grids for more coverage
+        bool diag1_tight = ((x + y) % 3) < 1;
+        bool diag2_tight = ((x - y) % 3) < 1;
+        bool horiz_tight = (y % 2) < 1;
+        bool vert_tight  = (x % 2) < 1;
+
+        drawLine = diag1_tight || diag2_tight || horiz_tight || vert_tight || fineDiag1 || fineDiag2;
+    }
+    else if (luminance > 0.8) {
         drawLine = diag1 || diag2 || horizontal || vertical;
     } else if (luminance > 0.6) {
-        // Dark - use diagonal crosshatch + one direction
         drawLine = (diag1 && diag2) || horizontal;
     } else if (luminance > 0.4) {
-        // Medium dark - diagonal crosshatch
         drawLine = diag1 && diag2;
     } else if (luminance > 0.2) {
-        // Medium - single diagonal
         drawLine = diag1;
     } else if (luminance > 0.1) {
-        // Light - sparse diagonal
         drawLine = diag1 && ((x + y) % 8) < 2;
     }
-    // Very light areas (luminance <= 0.1) remain white
-    
-    if (drawLine) {
-        return Color(0, 0, 0); // Black lines
-    } else {
-        return Color(1, 1, 1); // White paper
-    }
+
+    return drawLine ? Color(0,0,0) : Color(1,1,1);
 }
+
 
 void Tracer::render(std::vector<Color>& framebuffer) const {
     if (!scene || !camera || width <= 0 || height <= 0) return;
@@ -147,38 +141,79 @@ void Tracer::render(std::vector<Color>& framebuffer) const {
     framebuffer.assign(static_cast<size_t>(nx) * ny, Color{0,0,0});
 
     if (mode == RenderMode::Paper) {
-        // Paper mode rendering
-        for (int y = 0; y < ny; ++y) {
-            for (int x = 0; x < nx; ++x) {
-                Ray r = camera->generate_ray(x, y);
-                Color baseColor = trace_paper(r);
-                
-                double luminance = get_luminance(baseColor);
-                double edgeStrength = get_edge_strength(x, y);
-                
-                Color finalColor;
-                
-                if (edgeStrength > 0.5) {
-                    // Strong edge - draw black line
-                    finalColor = Color(0, 0, 0);
-                } else if (edgeStrength > 0.2) {
-                    // Medium edge - blend with crosshatch
-                    Color hatch = apply_crosshatch(baseColor, luminance, x, y);
-                    finalColor = Color(
-                        hatch.r * (1.0 - edgeStrength),
-                        hatch.g * (1.0 - edgeStrength), 
-                        hatch.b * (1.0 - edgeStrength)
-                    );
-                } else {
-                    // No edge - pure crosshatch
-                    finalColor = apply_crosshatch(baseColor, luminance, x, y);
-                }
+    const int spp = 8; // match standard
+    std::mt19937 rng(12345);
+    std::uniform_real_distribution<double> uni(-0.5, 0.5);
 
-                // Flip exactly once when writing (row 0 at top)
-                framebuffer[y * nx + x] = finalColor;
+    for (int y = 0; y < ny; ++y) {
+        for (int x = 0; x < nx; ++x) {
+
+            double luminance_acc = 0.0;
+            double edge_acc = 0.0;
+
+            for (int s = 0; s < spp; ++s) {
+                const double dx = uni(rng);
+                const double dy = uni(rng);
+
+                // base tone
+                Ray r = camera->generate_ray_subpixel(x, y, dx, dy);
+                Color baseColor = trace_paper(r);
+                luminance_acc += get_luminance(baseColor);
+
+                // edge using same jitter (sample neighbors with same dx,dy)
+                auto neighbor_hit = [&](int px, int py, Hit& out, bool& ok){
+                    if (px < 0 || px >= nx || py < 0 || py >= ny) { ok = false; return; }
+                    Ray rn = camera->generate_ray_subpixel(px, py, dx, dy);
+                    ok = scene->intersect(rn, 1e-4, kINF, out);
+                };
+
+                Hit cH; bool cOk = false; neighbor_hit(x, y, cH, cOk);
+                double e = 0.0;
+                if (cOk) {
+                    static const int DX[4] = {-1, 1, 0, 0};
+                    static const int DY[4] = {0, 0, -1, 1};
+                    double maxDiff = 0.0;
+                    for (int k = 0; k < 4; ++k) {
+                        Hit nH; bool nOk = false;
+                        neighbor_hit(x + DX[k], y + DY[k], nH, nOk);
+                        if (cOk != nOk) {
+                            maxDiff = std::max(maxDiff, 1.0);               // silhouette
+                        } else if (cOk && nOk) {
+                            double depthDiff  = std::abs(cH.t - nH.t);
+                            double normalDiff = 1.0 - cH.n.dot(nH.n);
+                            if (depthDiff  > 0.1) maxDiff = std::max(maxDiff, 0.8);
+                            if (normalDiff > 0.3) maxDiff = std::max(maxDiff, 0.6);
+                            if (cH.mat != nH.mat) maxDiff = std::max(maxDiff, 0.4);
+                        }
+                    }
+                    e = maxDiff;
+                }
+                edge_acc += e;
             }
+
+            const double luminance = luminance_acc / double(spp);
+            const double edgeStrength = edge_acc / double(spp);
+
+            Color finalColor;
+            if (edgeStrength > 0.5) {
+                finalColor = Color(0,0,0);
+            } else if (edgeStrength > 0.2) {
+                Color hatch = apply_crosshatch(Color(0,0,0), luminance, x, y);
+                finalColor = Color(
+                    hatch.r * (1.0 - edgeStrength),
+                    hatch.g * (1.0 - edgeStrength),
+                    hatch.b * (1.0 - edgeStrength)
+                );
+            } else {
+                finalColor = apply_crosshatch(Color(0,0,0), luminance, x, y);
+            }
+            const int yy = ny - 1 - y;
+            framebuffer[yy * nx + x] = finalColor;
         }
-    } else {
+    }
+}
+ 
+    else {
         // Standard mode rendering (existing code)
         const int spp = 8;
         std::mt19937 rng(12345);
