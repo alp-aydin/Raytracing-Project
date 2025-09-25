@@ -231,6 +231,63 @@ std::shared_ptr<Primitive> make_halfspace(const json& j) {
     return h;
 }
 
+static Material mat_from_color_or_block(const json& j) {
+    Material m;
+    if (j.is_array()) {
+        m.albedo = as_rgb(j);            // use existing as_rgb
+        return m;
+    }
+    // use the color-block parser defined above in this file
+    return parse_color_block(j);
+}
+
+
+std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
+    // Required: position, radius
+    if (!jnode.contains("position") || !jnode.contains("radius")) {
+        throw std::runtime_error("pokeball requires 'position' and 'radius'.");
+    }
+    const Vec3 c = as_vec3_from_array(jnode.at("position"));
+    const double r = jnode.at("radius").get<double>();
+
+    // Defaults that look like the reference picture
+    Material top, bottom, belt, ring, button;
+    top.albedo    = Color(0.88,0.12,0.20); top.kd=1.0; top.ks=0.15; top.shininess=64;
+    bottom.albedo = Color(0.95,0.95,0.98); bottom.kd=1.0; bottom.ks=0.08; bottom.shininess=32;
+    belt.albedo   = Color(0.12,0.12,0.15); belt.kd=1.0;
+    ring.albedo   = Color(0.35,0.35,0.40); ring.kd=1.0;
+    button.albedo = Color(0.96,0.96,0.99); button.kd=1.0; button.ks=0.25; button.shininess=64;
+
+    double belt_half   = 0.06;
+    double btn_outer   = 0.28;
+    double ring_width  = 0.06;
+    Dir3   btn_dir     = Dir3{1,0,0};
+
+    if (jnode.contains("colors")) {
+        const json& jc = jnode.at("colors");
+        if (jc.contains("top"))     top    = mat_from_color_or_block(jc.at("top"));
+        if (jc.contains("bottom"))  bottom = mat_from_color_or_block(jc.at("bottom"));
+        if (jc.contains("belt"))    belt   = mat_from_color_or_block(jc.at("belt"));
+        if (jc.contains("ring"))    ring   = mat_from_color_or_block(jc.at("ring"));
+        if (jc.contains("button"))  button = mat_from_color_or_block(jc.at("button"));
+    }
+
+    if (jnode.contains("belt_half"))     belt_half  = jnode.at("belt_half").get<double>();
+    if (jnode.contains("button_outer"))  btn_outer  = jnode.at("button_outer").get<double>();
+    if (jnode.contains("ring_width"))    ring_width = jnode.at("ring_width").get<double>();
+    if (jnode.contains("button_dir")) {
+        const Vec3 d = as_vec3_from_array(jnode.at("button_dir"));
+        btn_dir = Dir3{d.x, d.y, d.z};
+    }
+
+    auto pb = std::make_shared<Pokeball>(
+        Point3{c.x, c.y, c.z}, r,
+        top, bottom, belt, ring, button,
+        belt_half, btn_outer, ring_width, btn_dir
+    );
+    return pb;
+}
+
 // ---------- transforms ----------
 std::shared_ptr<Primitive> make_scaling(const json& j) {
     if (!j.contains("factors") || !j.contains("subject"))
@@ -272,6 +329,23 @@ std::shared_ptr<Primitive> fold_csg_array(const json& arr, CSGOp op) {
     return acc;
 }
 
+std::shared_ptr<Primitive> make_csg_node(const json& j) {
+    if (!j.contains("operator") || !j.contains("left") || !j.contains("right"))
+        throw std::runtime_error("csg requires 'operator', 'left', 'right'");
+
+    const std::string op = j.at("operator").get<std::string>();
+    CSGOp cop;
+    if      (op == "union")        cop = CSGOp::Union;
+    else if (op == "intersection") cop = CSGOp::Intersection;
+    else if (op == "difference")   cop = CSGOp::Difference;
+    else throw std::runtime_error("csg.operator must be one of: union/intersection/difference");
+
+    auto lhs = parse_object_node(j.at("left"));
+    auto rhs = parse_object_node(j.at("right"));
+    return std::make_shared<CSG>(cop, lhs, rhs);
+}
+
+
 // ---------- dispatcher ----------
 std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
     ensure_object_1key(jnode);
@@ -281,11 +355,14 @@ std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
 
     if (kind == "sphere")       return make_sphere(val);
     if (kind == "halfspace" || kind == "halfSpace") return make_halfspace(val);
+    if (kind == "pokeball")   return make_pokeball(val);
+
 
     // transforms
     if (kind == "scaling")      return make_scaling(val);
     if (kind == "translation")  return make_translation(val);
     if (kind == "rotation")     return make_rotation(val);
+    if (kind == "csg")         return make_csg_node(val);
 
     // CSG arrays
     if (kind == "union")        return fold_csg_array(val, CSGOp::Union);

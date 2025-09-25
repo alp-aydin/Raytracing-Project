@@ -111,3 +111,49 @@ bool HalfSpace::interval(const Ray& r, double& tEnter, double& tExit,
         return true;
     }
 }
+
+// ---------------- Pokeball ----------------
+static inline double clamp1(double x){
+    if (x < -1.0) return -1.0;
+    if (x >  1.0) return  1.0;
+    return x;
+}
+
+const Material* Pokeball::pick_region_material(const Point3& p) const {
+    // Local unit position on the sphere
+    Dir3 u = Dir3((p - this->c) / this->r);      // unit normal / local direction
+
+    // 1) Button (on equator, centered at +btnDir). Wins over belt.
+    const double ang = std::acos(clamp1(u.dot(btnDir)));   // angle to button center
+    const double inner = std::max(0.0, btnOuter - ringWidth);
+    if (ang <= btnOuter) {
+        if (ang >= inner) return &ringMat;  // annulus
+        return &buttonMat;                  // button fill
+    }
+
+    // 2) Belt (around the equator in XZ-plane): |y| small on unit sphere
+    if (std::abs(u.y) <= beltHalf) return &beltMat;
+
+    // 3) Hemispheres (Y up is red top, Y down is white bottom)
+    return (u.y >= 0.0) ? &topMat : &bottomMat;
+}
+
+bool Pokeball::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const {
+    // Use the base sphere intersection, then recolor by region.
+    if (!Sphere::intersect(ray, tmin, tmax, out)) return false;
+    out.mat = pick_region_material(out.p);
+    // normal is already set by Sphere::intersect; keep as-is
+    return true;
+}
+
+bool Pokeball::interval(const Ray& ray, double& t0, double& t1,
+                        Hit& h0, Hit& h1) const
+{
+    if (!Sphere::interval(ray, t0, t1, h0, h1)) return false;
+
+    // Assign region materials for the entry and exit boundary hits.
+    // (This makes it play nicely with CSG.)
+    h0.mat = pick_region_material(h0.p);
+    h1.mat = pick_region_material(h1.p);
+    return true;
+}

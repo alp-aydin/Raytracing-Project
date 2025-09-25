@@ -45,4 +45,16 @@ struct Camera {
         Dir3 d = (S - eye).normalized();
         return Ray{eye, d};
     }
+
+    inline Ray generate_ray_subpixel(int i, int j, double dx, double dy) const {
+    const int nx = screen.nx();
+    const int ny = screen.ny();
+
+    // jitter around the pixel center
+    const double sx = (i + 0.5 + dx) / double(nx);
+    const double sy = (j + 0.5 + dy) / double(ny);
+
+    const Point3 S = screen.P + screen.U() * sx + screen.V() * sy;
+    return Ray{ eye, (S - eye).normalized() };
+}
 };
