@@ -28,11 +28,18 @@ static cv::Mat framebuffer_to_mat_bgr8(const std::vector<Color>& fb, int W, int 
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <scene.json> <output.png>\n";
+        std::cerr << "Usage: " << argv[0] << " <scene.json> <output.png> [--paper]\n";
+        std::cerr << "  --paper: Enable paper rendering mode with crosshatching\n";
         return 1;
     }
     const std::string json_path = argv[1];
     const std::string out_path  = argv[2];
+    
+    // Check for paper mode flag
+    bool paper_mode = false;
+    if (argc > 3 && std::string(argv[3]) == "--paper") {
+        paper_mode = true;
+    }
 
     Scene scene;
     Camera cam;
@@ -56,6 +63,7 @@ int main(int argc, char** argv) {
     tracer.camera = &cam;
     tracer.width  = W;
     tracer.height = H;
+    tracer.mode   = paper_mode ? RenderMode::Paper : RenderMode::Standard;
 
     std::vector<Color> framebuffer;
     tracer.render(framebuffer);
@@ -66,6 +74,8 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to write PNG: " << out_path << "\n";
         return 4;
     }
-    std::cout << "Wrote " << out_path << " (" << W << "x" << H << ")\n";
+    
+    std::string mode_str = paper_mode ? " (paper mode)" : "";
+    std::cout << "Wrote " << out_path << " (" << W << "x" << H << ")" << mode_str << "\n";
     return 0;
 }
