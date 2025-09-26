@@ -1,12 +1,16 @@
 #pragma once
 #include "core.h"
 
-// Simple material (enough to start shading later)
+// Enhanced material struct to support full specification
 struct Material {
-    Color  albedo{1,1,1};
-    double kd{1.0};          // diffuse weight
-    double ks{0.0};          // specular weight
-    double shininess{32.0};
+    Color  albedo{1,1,1};        // Primary surface color (from diffuse/albedo)
+    Color  ambient{0,0,0};       // Ambient reflection coefficient
+    double kd{1.0};              // Diffuse weight
+    double ks{0.0};              // Specular weight
+    double kr{0.0};              // Reflection coefficient (from reflected)
+    double kt{0.0};              // Transmission coefficient (from refracted)
+    double shininess{32.0};      // Phong exponent
+    double refractive_index{1.0}; // Per-object refractive index
 };
 
 // Intersection payload
@@ -72,7 +76,7 @@ struct Pokeball : Sphere {
     Material buttonMat;  // light button fill
 
     // Controls
-    double beltHalf = 0.06;      // |ŷ| <= beltHalf  => belt (on unit sphere)
+    double beltHalf = 0.06;      // |ŷ| <= beltHalf  => belt (on unit sphere)
     double btnOuter = 0.28;      // angular radius (radians) of full button
     double ringWidth = 0.06;     // ring thickness (radians)
     Dir3   btnDir{1,0,0};        // button faces +X by default
@@ -101,5 +105,3 @@ struct Pokeball : Sphere {
 private:
     inline const Material* pick_region_material(const Point3& p) const;
 };
-
-

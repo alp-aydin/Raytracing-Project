@@ -20,48 +20,55 @@ Color shade_lambert_phong(const Scene& scene, const Hit& hit, const Dir3& wo)
     const Material& m = *hit.mat;
     const Dir3 n = hit.n;
 
-    // Ambient: approximate Ka by albedo (spec asks E_a = K_a I_a)
-    Color Lo = mul(m.albedo, scene.ambient);
+    // Ambient: E_a = K_a * I_a
+    Color Lo = mul(m.ambient, scene.ambient);
 
-    // Fixed: Scale-aware shadow epsilon
+    // Scale-aware shadow epsilon
     const double shadow_epsilon = std::max(1e-4, 1e-6 * hit.t);
 
-    // Directional lights
+    // Directional lights (no falloff)
     for (const auto& L : scene.dir_lights) {
         Dir3 wi = (-L.dir).normalized();
         double ndotl = std::max(0.0, n.dot(wi));
         if (ndotl <= 0.0) continue;
 
-        // Hard shadow: ray from hit point toward light
         Ray sray{ Point3(hit.p + n * shadow_epsilon), wi };
-        if (scene.occluded(sray, shadow_epsilon, kINF)) continue; // blocked
+        if (scene.occluded(sray, shadow_epsilon, kINF)) continue;
 
         Color diff = m.albedo * (m.kd * ndotl);
         Dir3 h = (wi + wo).normalized();
         double ndoth = std::max(0.0, n.dot(h));
         double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
-        Color Li = L.radiance; // dir light as radiance, no falloff
-        Lo = combine(Lo, mul(diff + Color(spec,spec,spec), Li));
+
+        Color Li = L.radiance; // directional light as radiance
+        Lo = combine(Lo, mul(diff + Color(spec, spec, spec), Li));
     }
 
-    // Point lights
+    // Point lights (1/r^2 falloff)
     for (const auto& L : scene.point_lights) {
-        Dir3 wi = (L.pos - hit.p).normalized();
+        Dir3 toL = L.pos - hit.p;
+        double dist2 = toL.dot(toL);
+        if (dist2 <= 0.0) continue;
+
+        Dir3 wi = toL / std::sqrt(dist2);
         double ndotl = std::max(0.0, n.dot(wi));
         if (ndotl <= 0.0) continue;
 
-        // Distance & shadow
-        double dist2 = (L.pos - hit.p).dot(L.pos - hit.p);
-        double dist  = std::sqrt(std::max(0.0, dist2));
+        // Shadow ray only up to the light
+        double max_t = std::sqrt(dist2) - shadow_epsilon;
+        if (max_t <= 0.0) continue;
+
         Ray sray{ Point3(hit.p + n * shadow_epsilon), wi };
-        if (scene.occluded(sray, shadow_epsilon, dist - shadow_epsilon)) continue;
+        if (scene.occluded(sray, shadow_epsilon, max_t)) continue;
 
         Color diff = m.albedo * (m.kd * ndotl);
         Dir3 h = (wi + wo).normalized();
         double ndoth = std::max(0.0, n.dot(h));
         double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
-        Color Li = L.intensity * (1.0 / std::max(1e-6, dist2));
-        Lo = combine(Lo, mul(diff + Color(spec,spec,spec), Li));
+
+        // Treat intensity as point-light power; convert to irradiance with 1/r^2
+        Color Li = L.intensity * (1.0 / std::max(1e-9, dist2));
+        Lo = combine(Lo, mul(diff + Color(spec, spec, spec), Li));
     }
 
     return Lo;
