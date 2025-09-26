@@ -1,0 +1,25 @@
+{
+    "screen": {
+        "position": [0, 0, 0],
+        "dimensions": [1, 1],
+        "dpi": 50,
+        "observer": [0, 0, 3]
+    },
+    "sources": [
+        {
+            "position": [2, 2, 2],
+            "intensity": [1, 1, 1]
+        }
+    ],
+    "objects": [
+        {
+            "sphere": {
+                "position": [0, 0, 0],
+                "radius": 1.0,
+                "color": {
+                    "diffuse": [0.8, 0.2, 0.2]
+                }
+            }
+        }
+    ]
+}
