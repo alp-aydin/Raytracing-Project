@@ -1,75 +1,130 @@
 #include "shading.h"
 #include <algorithm>
+#include <cmath>
 
-// Fixed: Use proper additive lighting instead of screen blend
-static inline Color combine(const Color& a, const Color& b) {
+Color combine(const Color& a, const Color& b) {
     return { 
-        std::min(1.0, a.r + b.r),
-        std::min(1.0, a.g + b.g), 
-        std::min(1.0, a.b + b.b)
+        1.0 - (1.0 - a.r) * (1.0 - b.r),
+        1.0 - (1.0 - a.g) * (1.0 - b.g), 
+        1.0 - (1.0 - a.b) * (1.0 - b.b)
     };
 }
 
-static inline Color mul(const Color& a, const Color& b) {
-    return { a.r*b.r, a.g*b.g, a.b*b.b };
+// Hadamard (element-wise) product for colors
+Color mul(const Color& a, const Color& b) {
+    return { a.r * b.r, a.g * b.g, a.b * b.b };
+}
+
+// Helper function to avoid operator conflicts with Color::operator*
+Color scale(const Color& c, double s) {
+    return { c.r * s, c.g * s, c.b * s };
 }
 
 Color shade_lambert_phong(const Scene& scene, const Hit& hit, const Dir3& wo)
 {
-    if (!hit.mat) return {1,0,1};
+    if (!hit.mat) return {1,0,1}; // Magenta for missing material
+    
     const Material& m = *hit.mat;
     const Dir3 n = hit.n;
 
-    // Ambient: E_a = K_a * I_a
-    Color Lo = mul(m.ambient, scene.ambient);
+    // 1. Ambient component: E_a = K_a * I_a
+    Color E_a = mul(m.ambient, scene.ambient);
+    Color E_total = E_a;
 
-    // Scale-aware shadow epsilon
-    const double shadow_epsilon = std::max(1e-4, 1e-6 * hit.t);
+    // Much more generous shadow epsilon
+    const double shadow_epsilon = std::max(1e-3, 1e-4 * hit.t);
 
-    // Directional lights (no falloff)
-    for (const auto& L : scene.dir_lights) {
-        Dir3 wi = (-L.dir).normalized();
+    // 2. Process all directional lights (no distance falloff)
+    for (const auto& light : scene.dir_lights) {
+        Dir3 wi = (-light.dir).normalized(); // Direction TO light
         double ndotl = std::max(0.0, n.dot(wi));
-        if (ndotl <= 0.0) continue;
+        
+        if (ndotl <= 0.0) continue; // Light behind surface
+        
+        // Check for shadows
+        Point3 shadow_origin = Point3(hit.p.x + n.x * shadow_epsilon,
+                                     hit.p.y + n.y * shadow_epsilon,
+                                     hit.p.z + n.z * shadow_epsilon);
+        Ray shadow_ray{ shadow_origin, wi };
+        if (scene.occluded(shadow_ray, shadow_epsilon, kINF)) continue;
 
-        Ray sray{ Point3(hit.p + n * shadow_epsilon), wi };
-        if (scene.occluded(sray, shadow_epsilon, kINF)) continue;
+        // Diffuse component: E_d = K_d * I_L * (L·N)
+        Color E_d = scale(mul(m.albedo, light.radiance), m.kd * ndotl);
 
-        Color diff = m.albedo * (m.kd * ndotl);
-        Dir3 h = (wi + wo).normalized();
-        double ndoth = std::max(0.0, n.dot(h));
-        double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
+        // Specular component
+        Color E_s{0,0,0};
+        if (m.ks > 0.0) {
+            Dir3 r = Dir3(2.0 * n.dot(wi) * n.x - wi.x,
+                         2.0 * n.dot(wi) * n.y - wi.y,
+                         2.0 * n.dot(wi) * n.z - wi.z).normalized();
+            double rdotv = std::max(0.0, r.dot(wo));
+            double spec_factor = std::pow(rdotv, m.shininess) * m.ks;
+            E_s = scale(light.radiance, spec_factor);
+        }
 
-        Color Li = L.radiance; // directional light as radiance
-        Lo = combine(Lo, mul(diff + Color(spec, spec, spec), Li));
+        // Combine diffuse and specular for this light
+        Color E_light = combine(E_d, E_s);
+        E_total = combine(E_total, E_light);
     }
 
-    // Point lights (1/r^2 falloff)
-    for (const auto& L : scene.point_lights) {
-        Dir3 toL = L.pos - hit.p;
-        double dist2 = toL.dot(toL);
-        if (dist2 <= 0.0) continue;
-
-        Dir3 wi = toL / std::sqrt(dist2);
+    // 3. Process all point lights with MUCH more generous lighting
+    for (const auto& light : scene.point_lights) {
+        Dir3 to_light = Dir3(light.pos.x - hit.p.x, 
+                            light.pos.y - hit.p.y, 
+                            light.pos.z - hit.p.z);
+        double dist_squared = to_light.dot(to_light);
+        
+        // MUCH more generous minimum distance - prevents weak lighting
+        if (dist_squared <= 0.01) {
+            dist_squared = 0.01; // Minimum distance for very bright lighting
+        }
+        
+        double distance = std::sqrt(dist_squared);
+        Dir3 wi = Dir3(to_light.x / distance, to_light.y / distance, to_light.z / distance);
         double ndotl = std::max(0.0, n.dot(wi));
+        
         if (ndotl <= 0.0) continue;
 
-        // Shadow ray only up to the light
-        double max_t = std::sqrt(dist2) - shadow_epsilon;
-        if (max_t <= 0.0) continue;
+        // More generous shadow checking
+        double max_shadow_t = distance - shadow_epsilon;
+        if (max_shadow_t <= shadow_epsilon) continue;
+        
+        Point3 shadow_origin = Point3(hit.p.x + n.x * shadow_epsilon,
+                                     hit.p.y + n.y * shadow_epsilon,
+                                     hit.p.z + n.z * shadow_epsilon);
+        Ray shadow_ray{ shadow_origin, wi };
+        if (scene.occluded(shadow_ray, shadow_epsilon, max_shadow_t)) continue;
 
-        Ray sray{ Point3(hit.p + n * shadow_epsilon), wi };
-        if (scene.occluded(sray, shadow_epsilon, max_t)) continue;
+        // MUCH more generous point light intensity calculation
+        // Use a softer falloff that doesn't kill the lighting so much
+        double effective_dist = std::max(0.5, distance); // Much more generous minimum
+        double falloff = 1.0 / (effective_dist * effective_dist);
+        
+        // BOOST the lighting significantly
+        Color I_L = scale(light.intensity, falloff * 2.0); // 2x boost factor
 
-        Color diff = m.albedo * (m.kd * ndotl);
-        Dir3 h = (wi + wo).normalized();
-        double ndoth = std::max(0.0, n.dot(h));
-        double spec = (m.ks > 0.0) ? std::pow(ndoth, m.shininess) * m.ks : 0.0;
+        // Diffuse component - also boost this
+        Color E_d = scale(mul(m.albedo, I_L), m.kd * ndotl * 1.5); // 1.5x boost
 
-        // Treat intensity as point-light power; convert to irradiance with 1/r^2
-        Color Li = L.intensity * (1.0 / std::max(1e-9, dist2));
-        Lo = combine(Lo, mul(diff + Color(spec, spec, spec), Li));
+        // Specular component
+        Color E_s{0,0,0};
+        if (m.ks > 0.0) {
+            Dir3 r = Dir3(2.0 * n.dot(wi) * n.x - wi.x,
+                         2.0 * n.dot(wi) * n.y - wi.y,
+                         2.0 * n.dot(wi) * n.z - wi.z).normalized();
+            double rdotv = std::max(0.0, r.dot(wo));
+            double spec_factor = std::pow(rdotv, m.shininess) * m.ks;
+            E_s = scale(I_L, spec_factor);
+        }
+
+        Color E_light = combine(E_d, E_s);
+        E_total = combine(E_total, E_light);
     }
 
-    return Lo;
+    // Don't clamp so aggressively - let it get brighter
+    E_total.r = std::min(1.5, E_total.r); // Allow some oversaturation
+    E_total.g = std::min(1.5, E_total.g);
+    E_total.b = std::min(1.5, E_total.b);
+
+    return E_total;
 }

@@ -1,141 +1,195 @@
 #include "transform.h"
 #include <cmath>
 
-static inline void sincosd(double a, double& s, double& c){ s = std::sin(a); c = std::cos(a); }
-
-static inline Dir3 rot_apply_dir(const Dir3& v, Axis ax, double ang) {
-    double s, c; sincosd(ang, s, c);
-    switch (ax) {
-        case Axis::X: return Dir3{ v.x, c*v.y - s*v.z, s*v.y + c*v.z };
-        case Axis::Y: return Dir3{  c*v.x + s*v.z, v.y, -s*v.x + c*v.z };
-        case Axis::Z: return Dir3{  c*v.x - s*v.y, s*v.x + c*v.y, v.z };
-    }
-    return v;
-}
-static inline Dir3  rot_apply_dir_inv(const Dir3& v, Axis ax, double ang) { return rot_apply_dir(v, ax, -ang); }
-static inline Point3 rot_apply_pt(const Point3& p, Axis ax, double ang) {
-    // rotate as if it were a direction, since rotation doesn't use translation
-    Dir3 v{p.x, p.y, p.z};
-    Dir3 r = rot_apply_dir(v, ax, ang);
-    return Point3{r.x, r.y, r.z};
-}
-static inline Point3 rot_apply_pt_inv (const Point3& p, Axis ax, double ang) { return rot_apply_pt(p, ax, -ang); }
+// Simplified direct 3D implementation that follows the spec mathematically
+// but avoids the matrix inverse complexity for now
 
 // -------- Translation --------
 bool Translation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     if (!child) return false;
-    Ray rl{ Point3{ r.o.x - t.x, r.o.y - t.y, r.o.z - t.z }, r.d };
+    
+    // Direct translation: transform ray to local space
+    // For translation by vector t, the inverse is translation by -t
+    Point3 local_origin(r.o.x - transform_matrix.m[0][3], 
+                       r.o.y - transform_matrix.m[1][3], 
+                       r.o.z - transform_matrix.m[2][3]);
+    Ray local_ray(local_origin, r.d); // Direction unchanged for translation
+    
     Hit h;
-    if (!child->intersect(rl, 0.0, kINF, h)) return false;
-    Point3 Pw{ h.p.x + t.x, h.p.y + t.y, h.p.z + t.z };
-    Dir3  Nw = h.n;
-    double tw = project_t_world(r, Pw);
-    if (!(tw > tmin && tw < tmax)) return false;
-    out = h; out.p = Pw; out.set_face_normal(r, Nw); out.t = tw;
+    if (!child->intersect(local_ray, 0.0, kINF, h)) return false;
+    
+    // Transform hit point back to world space
+    Point3 world_point(h.p.x + transform_matrix.m[0][3],
+                      h.p.y + transform_matrix.m[1][3], 
+                      h.p.z + transform_matrix.m[2][3]);
+    Dir3 world_normal = h.n; // Normal unchanged for translation
+    
+    double world_t = project_t_world(r, world_point);
+    if (!(world_t > tmin && world_t < tmax)) return false;
+    
+    out = h;
+    out.p = world_point;
+    out.set_face_normal(r, world_normal);
+    out.t = world_t;
     return true;
 }
+
 bool Translation::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
-    Ray rl{ Point3{ r.o.x - t.x, r.o.y - t.y, r.o.z - t.z }, r.d };
-    bool ok = child->interval(rl, tEnter, tExit, enterHit, exitHit);
+    
+    Point3 local_origin(r.o.x - transform_matrix.m[0][3], 
+                       r.o.y - transform_matrix.m[1][3], 
+                       r.o.z - transform_matrix.m[2][3]);
+    Ray local_ray(local_origin, r.d);
+    
+    bool ok = child->interval(local_ray, tEnter, tExit, enterHit, exitHit);
     if (!ok) return false;
-    enterHit.p = Point3{ enterHit.p.x + t.x, enterHit.p.y + t.y, enterHit.p.z + t.z };
-    exitHit.p  = Point3{  exitHit.p.x + t.x,  exitHit.p.y + t.y,  exitHit.p.z + t.z };
+    
+    // Transform both hits back to world space
+    enterHit.p = Point3(enterHit.p.x + transform_matrix.m[0][3],
+                       enterHit.p.y + transform_matrix.m[1][3],
+                       enterHit.p.z + transform_matrix.m[2][3]);
+    exitHit.p = Point3(exitHit.p.x + transform_matrix.m[0][3],
+                      exitHit.p.y + transform_matrix.m[1][3],
+                      exitHit.p.z + transform_matrix.m[2][3]);
+    
     enterHit.set_face_normal(r, enterHit.n);
-    exitHit .set_face_normal(r, exitHit.n);
+    exitHit.set_face_normal(r, exitHit.n);
+    
     tEnter = project_t_world(r, enterHit.p);
-    tExit  = project_t_world(r, exitHit.p);
+    tExit = project_t_world(r, exitHit.p);
     return true;
 }
 
 // -------- Scaling --------
 bool Scaling::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     if (!child) return false;
-    if (std::abs(s.x) < kEPS || std::abs(s.y) < kEPS || std::abs(s.z) < kEPS) return false;
-    Ray rl{
-        Point3{ r.o.x / s.x, r.o.y / s.y, r.o.z / s.z },
-        Dir3  { r.d.x / s.x, r.d.y / s.y, r.d.z / s.z }
-    };
+    
+    // Extract scale factors from matrix
+    double sx = transform_matrix.m[0][0];
+    double sy = transform_matrix.m[1][1]; 
+    double sz = transform_matrix.m[2][2];
+    
+    if (std::abs(sx) < kEPS || std::abs(sy) < kEPS || std::abs(sz) < kEPS) return false;
+    
+    // Transform ray to local space: scale down
+    Point3 local_origin(r.o.x / sx, r.o.y / sy, r.o.z / sz);
+    Dir3 local_direction(r.d.x / sx, r.d.y / sy, r.d.z / sz);
+    Ray local_ray(local_origin, local_direction);
+    
     Hit h;
-    if (!child->intersect(rl, 0.0, kINF, h)) return false;
-    auto mapP = [&](const Point3& p)->Point3{ return Point3{ p.x * s.x, p.y * s.y, p.z * s.z }; };
-    auto mapN = [&](const Dir3& n)->Dir3{
-        Dir3 w{ n.x / s.x, n.y / s.y, n.z / s.z };
-        double L = std::sqrt(w.x*w.x + w.y*w.y + w.z*w.z);
-        // Fixed: Better handling of small normals
-        if (L > kEPS) { 
-            w.x/=L; w.y/=L; w.z/=L; 
-        } else {
-            w = Dir3{0,1,0}; // Fallback normal
-        }
-        return w;
-    };
-    Point3 Pw = mapP(h.p);
-    Dir3  Nw  = mapN(h.n);
-    double tw = project_t_world(r, Pw);
-    if (!(tw > tmin && tw < tmax)) return false;
-    out = h; out.p = Pw; out.set_face_normal(r, Nw); out.t = tw;
-    return true;
-}
-bool Scaling::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
-    if (!child) return false;
-    if (std::abs(s.x) < kEPS || std::abs(s.y) < kEPS || std::abs(s.z) < kEPS) return false;
-    Ray rl{
-        Point3{ r.o.x / s.x, r.o.y / s.y, r.o.z / s.z },
-        Dir3  { r.d.x / s.x, r.d.y / s.y, r.d.z / s.z }
-    };
-    bool ok = child->interval(rl, tEnter, tExit, enterHit, exitHit);
-    if (!ok) return false;
-    auto mapP = [&](const Point3& p)->Point3{ return Point3{ p.x * s.x, p.y * s.y, p.z * s.z }; };
-    auto mapN = [&](const Dir3& n)->Dir3{
-        Dir3 w{ n.x / s.x, n.y / s.y, n.z / s.z };
-        double L = std::sqrt(w.x*w.x + w.y*w.y + w.z*w.z);
-        // Fixed: Better handling of small normals
-        if (L > kEPS) { 
-            w.x/=L; w.y/=L; w.z/=L; 
-        } else {
-            w = Dir3{0,1,0}; // Fallback normal
-        }
-        return w;
-    };
-    enterHit.p = mapP(enterHit.p);
-    exitHit.p  = mapP(exitHit.p);
-    enterHit.set_face_normal(r, mapN(enterHit.n));
-    exitHit .set_face_normal(r, mapN(exitHit.n));
-    tEnter = project_t_world(r, enterHit.p);
-    tExit  = project_t_world(r, exitHit.p);
+    if (!child->intersect(local_ray, 0.0, kINF, h)) return false;
+    
+    // Transform hit point back to world space: scale up
+    Point3 world_point(h.p.x * sx, h.p.y * sy, h.p.z * sz);
+    
+    // Transform normal back to world space: scale down and normalize
+    Dir3 world_normal(h.n.x / sx, h.n.y / sy, h.n.z / sz);
+    world_normal = world_normal.normalized();
+    
+    double world_t = project_t_world(r, world_point);
+    if (!(world_t > tmin && world_t < tmax)) return false;
+    
+    out = h;
+    out.p = world_point;
+    out.set_face_normal(r, world_normal);
+    out.t = world_t;
     return true;
 }
 
-// -------- Rotation --------
-bool Rotation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
+bool Scaling::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
-    Ray rl{
-        rot_apply_pt_inv(r.o, axis, angle),
-        rot_apply_dir_inv(r.d, axis, angle)
-    };
-    Hit h;
-    if (!child->intersect(rl, 0.0, kINF, h)) return false;
-    Point3 Pw = rot_apply_pt(h.p, axis, angle);
-    Dir3  Nw  = rot_apply_dir(h.n, axis, angle);
-    double tw = project_t_world(r, Pw);
-    if (!(tw > tmin && tw < tmax)) return false;
-    out = h; out.p = Pw; out.set_face_normal(r, Nw); out.t = tw;
+    
+    double sx = transform_matrix.m[0][0];
+    double sy = transform_matrix.m[1][1]; 
+    double sz = transform_matrix.m[2][2];
+    
+    if (std::abs(sx) < kEPS || std::abs(sy) < kEPS || std::abs(sz) < kEPS) return false;
+    
+    Point3 local_origin(r.o.x / sx, r.o.y / sy, r.o.z / sz);
+    Dir3 local_direction(r.d.x / sx, r.d.y / sy, r.d.z / sz);
+    Ray local_ray(local_origin, local_direction);
+    
+    bool ok = child->interval(local_ray, tEnter, tExit, enterHit, exitHit);
+    if (!ok) return false;
+    
+    // Transform both hits back to world space
+    enterHit.p = Point3(enterHit.p.x * sx, enterHit.p.y * sy, enterHit.p.z * sz);
+    exitHit.p = Point3(exitHit.p.x * sx, exitHit.p.y * sy, exitHit.p.z * sz);
+    
+    Dir3 enter_normal(enterHit.n.x / sx, enterHit.n.y / sy, enterHit.n.z / sz);
+    Dir3 exit_normal(exitHit.n.x / sx, exitHit.n.y / sy, exitHit.n.z / sz);
+    
+    enterHit.set_face_normal(r, enter_normal.normalized());
+    exitHit.set_face_normal(r, exit_normal.normalized());
+    
+    tEnter = project_t_world(r, enterHit.p);
+    tExit = project_t_world(r, exitHit.p);
     return true;
 }
+
+// -------- Rotation --------  
+bool Rotation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
+    if (!child) return false;
+    
+    // Apply inverse rotation to ray (rotate by -angle)
+    Matrix4 inv_rotation = inverse_matrix;
+    
+    Vec4 local_origin_4d = inv_rotation * Vec4(r.o.x, r.o.y, r.o.z, 1.0);
+    Vec4 local_direction_4d = inv_rotation * Vec4(r.d.x, r.d.y, r.d.z, 0.0);
+    
+    Point3 local_origin(local_origin_4d.x, local_origin_4d.y, local_origin_4d.z);
+    Dir3 local_direction(local_direction_4d.x, local_direction_4d.y, local_direction_4d.z);
+    Ray local_ray(local_origin, local_direction);
+    
+    Hit h;
+    if (!child->intersect(local_ray, 0.0, kINF, h)) return false;
+    
+    // Transform hit point and normal back to world space
+    Vec4 world_point_4d = transform_matrix * Vec4(h.p.x, h.p.y, h.p.z, 1.0);
+    Vec4 world_normal_4d = transform_matrix * Vec4(h.n.x, h.n.y, h.n.z, 0.0);
+    
+    Point3 world_point(world_point_4d.x, world_point_4d.y, world_point_4d.z);
+    Dir3 world_normal(world_normal_4d.x, world_normal_4d.y, world_normal_4d.z);
+    
+    double world_t = project_t_world(r, world_point);
+    if (!(world_t > tmin && world_t < tmax)) return false;
+    
+    out = h;
+    out.p = world_point;
+    out.set_face_normal(r, world_normal.normalized());
+    out.t = world_t;
+    return true;
+}
+
 bool Rotation::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
-    Ray rl{
-        rot_apply_pt_inv(r.o, axis, angle),
-        rot_apply_dir_inv(r.d, axis, angle)
-    };
-    bool ok = child->interval(rl, tEnter, tExit, enterHit, exitHit);
+    
+    Matrix4 inv_rotation = inverse_matrix;
+    
+    Vec4 local_origin_4d = inv_rotation * Vec4(r.o.x, r.o.y, r.o.z, 1.0);
+    Vec4 local_direction_4d = inv_rotation * Vec4(r.d.x, r.d.y, r.d.z, 0.0);
+    
+    Point3 local_origin(local_origin_4d.x, local_origin_4d.y, local_origin_4d.z);
+    Dir3 local_direction(local_direction_4d.x, local_direction_4d.y, local_direction_4d.z);
+    Ray local_ray(local_origin, local_direction);
+    
+    bool ok = child->interval(local_ray, tEnter, tExit, enterHit, exitHit);
     if (!ok) return false;
-    enterHit.p = rot_apply_pt(enterHit.p, axis, angle);
-    exitHit.p  = rot_apply_pt(exitHit.p,  axis, angle);
-    enterHit.set_face_normal(r, rot_apply_dir(enterHit.n, axis, angle));
-    exitHit .set_face_normal(r, rot_apply_dir(exitHit.n,  axis, angle));
+    
+    // Transform both hits back to world space
+    Vec4 enter_point_4d = transform_matrix * Vec4(enterHit.p.x, enterHit.p.y, enterHit.p.z, 1.0);
+    Vec4 exit_point_4d = transform_matrix * Vec4(exitHit.p.x, exitHit.p.y, exitHit.p.z, 1.0);
+    Vec4 enter_normal_4d = transform_matrix * Vec4(enterHit.n.x, enterHit.n.y, enterHit.n.z, 0.0);
+    Vec4 exit_normal_4d = transform_matrix * Vec4(exitHit.n.x, exitHit.n.y, exitHit.n.z, 0.0);
+    
+    enterHit.p = Point3(enter_point_4d.x, enter_point_4d.y, enter_point_4d.z);
+    exitHit.p = Point3(exit_point_4d.x, exit_point_4d.y, exit_point_4d.z);
+    
+    enterHit.set_face_normal(r, Dir3(enter_normal_4d.x, enter_normal_4d.y, enter_normal_4d.z).normalized());
+    exitHit.set_face_normal(r, Dir3(exit_normal_4d.x, exit_normal_4d.y, exit_normal_4d.z).normalized());
+    
     tEnter = project_t_world(r, enterHit.p);
-    tExit  = project_t_world(r, exitHit.p);
+    tExit = project_t_world(r, exitHit.p);
     return true;
 }

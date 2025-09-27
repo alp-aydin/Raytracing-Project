@@ -3,7 +3,7 @@
 
 // Enhanced material struct to support full specification
 struct Material {
-    Color  albedo{1,1,1};        // Primary surface color (from diffuse/albedo)
+    Color  albedo{1,1,1};        // Primary surface color (from diffuse)
     Color  ambient{0,0,0};       // Ambient reflection coefficient
     double kd{1.0};              // Diffuse weight
     double ks{0.0};              // Specular weight
@@ -76,7 +76,7 @@ struct Pokeball : Sphere {
     Material buttonMat;  // light button fill
 
     // Controls
-    double beltHalf = 0.06;      // |ŷ| <= beltHalf  => belt (on unit sphere)
+    double beltHalf = 0.06;      // |y| <= beltHalf  => belt (on unit sphere)
     double btnOuter = 0.28;      // angular radius (radians) of full button
     double ringWidth = 0.06;     // ring thickness (radians)
     Dir3   btnDir{1,0,0};        // button faces +X by default

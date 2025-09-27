@@ -23,7 +23,7 @@ struct Scene {
 
     Color  ambient{0,0,0};   // I_a
     double medium_index{1.0};  // n (IOR)
-    int    recursion_limit{0}; // reflection/refraction max depth
+    int    recursion_limit{5}; // reflection/refraction max depth (default 5 instead of 0)
 
     // Find nearest hit in [tmin, tmax); returns true if anything was hit.
     bool intersect(const Ray& r, double tmin, double tmax, Hit& out) const;

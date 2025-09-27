@@ -3,7 +3,8 @@
 
 bool Sphere::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const {
     // Ray-sphere: ||o + t d - c||^2 = r^2
-    Vec3   oc      = ray.o - c;
+    // Using homogeneous coordinates but computing as 3D vectors
+    Dir3 oc = Dir3(ray.o.x - c.x, ray.o.y - c.y, ray.o.z - c.z);
     double a       = 1.0;                      // d is normalized in Ray
     double half_b  = oc.dot(ray.d);            // b = 2*half_b
     double cterm   = oc.dot(oc) - this->r * this->r;
@@ -21,7 +22,7 @@ bool Sphere::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const
 
     out.t = t;
     out.p = ray.at(t);
-    Dir3 outward = Dir3((out.p - c) / this->r);   // normal = (p - c) / r
+    Dir3 outward = Dir3((out.p.x - c.x) / this->r, (out.p.y - c.y) / this->r, (out.p.z - c.z) / this->r);   // normal = (p - c) / r
     out.set_face_normal(ray, outward);
     out.mat = mat;
     return true;
@@ -31,8 +32,8 @@ bool Sphere::interval(const Ray& ray,
                       double& t0, double& t1,
                       Hit& h0, Hit& h1) const
 {
-    // Same quadratic as your Sphere::intersect, but keep both roots (t0 <= t1)
-    Vec3 oc = ray.o - c;
+    // Same quadratic as Sphere::intersect, but keep both roots (t0 <= t1)
+    Dir3 oc = Dir3(ray.o.x - c.x, ray.o.y - c.y, ray.o.z - c.z);
     double a = 1.0;
     double half_b = oc.dot(ray.d);
     double cterm = oc.dot(oc) - r*r;
@@ -47,13 +48,13 @@ bool Sphere::interval(const Ray& ray,
     // Fill entry hit (outward normal)
     h0.t = t0;
     h0.p = ray.at(t0);
-    h0.set_face_normal(ray, Dir3((h0.p - c) / r));
+    h0.set_face_normal(ray, Dir3((h0.p.x - c.x) / r, (h0.p.y - c.y) / r, (h0.p.z - c.z) / r));
     h0.mat = mat;
 
     // Fill exit hit (same outward normal at that boundary)
     h1.t = t1;
     h1.p = ray.at(t1);
-    h1.set_face_normal(ray, Dir3((h1.p - c) / r));
+    h1.set_face_normal(ray, Dir3((h1.p.x - c.x) / r, (h1.p.y - c.y) / r, (h1.p.z - c.z) / r));
     h1.mat = mat;
 
     return true;
@@ -64,7 +65,9 @@ bool HalfSpace::intersect(const Ray& r, double tmin, double tmax, Hit& out) cons
     const double ndotd = n.dot(r.d);
     if (std::abs(ndotd) < 1e-12) return false; // parallel => no finite *surface* hit
 
-    const double t = n.dot(p0 - r.o) / ndotd;
+    // Computing n·(p0 - r.o) using homogeneous coordinates
+    Dir3 diff = Dir3(p0.x - r.o.x, p0.y - r.o.y, p0.z - r.o.z);
+    const double t = n.dot(diff) / ndotd;
     if (t < tmin || t > tmax) return false;
 
     Hit h;
@@ -85,7 +88,8 @@ bool HalfSpace::interval(const Ray& r, double& tEnter, double& tExit,
                          Hit& enterHit, Hit& exitHit) const
 {
     const double ndotd = n.dot(r.d);
-    const double f0    = n.dot(r.o - p0);
+    Dir3 diff = Dir3(r.o.x - p0.x, r.o.y - p0.y, r.o.z - p0.z);
+    const double f0    = n.dot(diff);
 
     if (std::abs(ndotd) < 1e-12) {
         if (f0 >= 0.0) {
@@ -121,7 +125,7 @@ static inline double clamp1(double x){
 
 const Material* Pokeball::pick_region_material(const Point3& p) const {
     // Local unit position on the sphere
-    Dir3 u = Dir3((p - this->c) / this->r);      // unit normal / local direction
+    Dir3 u = Dir3((p.x - this->c.x) / this->r, (p.y - this->c.y) / this->r, (p.z - this->c.z) / this->r);      // unit normal / local direction
 
     // 1) Button (on equator, centered at +btnDir). Wins over belt.
     const double ang = std::acos(clamp1(u.dot(btnDir)));   // angle to button center

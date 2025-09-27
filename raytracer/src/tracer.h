@@ -23,6 +23,9 @@ struct Tracer {
     // Single-ray trace returning background if nothing hit.
     Color trace(const Ray& r) const;
     
+    // Recursive ray tracing with depth limit
+    Color trace_recursive(const Ray& r, int depth) const;
+    
     // Paper mode specific functions
     Color trace_paper(const Ray& r) const;
     double get_edge_strength(int x, int y) const;
@@ -31,4 +34,10 @@ struct Tracer {
 
     void print_progress(int current, int total, 
                    std::chrono::steady_clock::time_point start_time) const;
+
+private:
+    // Helper functions for reflection and refraction
+    static Dir3 reflect(const Dir3& incident, const Dir3& normal);
+    static Dir3 refract(const Dir3& incident, const Dir3& normal, double eta);
+    static bool has_total_internal_reflection(const Dir3& incident, const Dir3& normal, double eta);
 };

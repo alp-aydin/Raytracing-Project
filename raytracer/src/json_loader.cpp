@@ -57,62 +57,48 @@ static inline double deg2rad(double d){ return d * M_PI / 180.0; }
 
 // ---------- materials ----------
 Material parse_color_block(const json& jcolor) {
-    // Start with default black material as per spec
-    Material m;
-    m.albedo            = Color(0,0,0);  // default black
-    m.ambient           = Color(0,0,0);  // default black ambient
-    m.kd                = 1.0;           // default diffuse coefficient
-    m.ks                = 0.0;           // default specular coefficient
-    m.kr                = 0.0;           // default reflection coefficient
-    m.kt                = 0.0;           // default transmission coefficient
-    m.shininess         = 1.0;           // default shininess
-    m.refractive_index  = 1.0;           // default refractive index
-
-    // Parse color fields according to spec priority:
-    // 1. diffuse (primary)
-    // 2. albedo (fallback)
-    // 3. ambient (last resort if neither diffuse nor albedo present)
-    if (jcolor.contains("diffuse")) {
-        m.albedo = as_rgb(jcolor.at("diffuse"));
-    } else if (jcolor.contains("albedo")) {
-        m.albedo = as_rgb(jcolor.at("albedo"));
-    } else if (jcolor.contains("ambient")) {
-        // Use ambient as albedo if no diffuse/albedo specified
-        m.albedo = as_rgb(jcolor.at("ambient"));
+    if (!jcolor.is_object()) {
+        throw std::runtime_error("color must be an object");
     }
 
-    // Parse ambient separately (always stored in ambient field)
+    // Defaults = "black" material per spec
+    Material m;
+    m.albedo           = Color(0,0,0);   // use diffuse as base color
+    m.ambient          = Color(0,0,0);
+    m.kd               = 1.0;
+    m.ks               = 0.0;
+    m.kr               = 0.0;
+    m.kt               = 0.0;
+    m.shininess        = 1.0;
+    m.refractive_index = 1.0;
+
+    // NOTE: We currently keep ks/kr/kt as scalars to match your shader.
+    // We average RGB inputs so scenes authored to spec still behave sensibly.
+    if (jcolor.contains("diffuse")) {
+        m.albedo = as_rgb(jcolor.at("diffuse"));
+    }
     if (jcolor.contains("ambient")) {
         m.ambient = as_rgb(jcolor.at("ambient"));
     }
-
-    // Handle specular - convert RGB to scalar ks
     if (jcolor.contains("specular")) {
         const Color s = as_rgb(jcolor.at("specular"));
-        m.ks = (s.r + s.g + s.b) / 3.0; // average RGB to get scalar
+        m.ks = (s.r + s.g + s.b) / 3.0;
     }
-
-    // Handle shininess
+    if (jcolor.contains("reflected")) {
+        const Color r = as_rgb(jcolor.at("reflected"));
+        m.kr = (r.r + r.g + r.b) / 3.0;
+    }
+    if (jcolor.contains("refracted")) {
+        const Color t = as_rgb(jcolor.at("refracted"));
+        m.kt = (t.r + t.g + t.b) / 3.0;
+    }
     if (jcolor.contains("shininess")) {
         m.shininess = jcolor.at("shininess").get<double>();
     }
-
-    // Handle reflected coefficient
-    if (jcolor.contains("reflected")) {
-        const Color reflected = as_rgb(jcolor.at("reflected"));
-        m.kr = (reflected.r + reflected.g + reflected.b) / 3.0; // average to scalar
-    }
-
-    // Handle refracted coefficient
-    if (jcolor.contains("refracted")) {
-        const Color refracted = as_rgb(jcolor.at("refracted"));
-        m.kt = (refracted.r + refracted.g + refracted.b) / 3.0; // average to scalar
-    }
-
     return m;
 }
 
-// ---------- forward decls ----------
+// ---------- forward decl ----------
 std::shared_ptr<Primitive> parse_object_node(const json& jnode);
 
 // ---------- screen / medium / lights ----------
@@ -120,38 +106,33 @@ void parse_screen(const json& root, Camera& cam) {
     if (!root.contains("screen")) return;
     const json& j = root.at("screen");
 
-    // dpi - use spec default of 72
+    // dpi (default 72)
     const int dpi = get_or<int>(j, "dpi", 72);
 
-    // dimensions: [Lx, Ly] - spec requires exactly 2 elements
+    // dimensions [Lx, Ly]
     double Lx = 1.0, Ly = 1.0;
     if (j.contains("dimensions")) {
         const json& d = j.at("dimensions");
         if (!d.is_array() || d.size() != 2) {
-            throw std::runtime_error("screen.dimensions must be [Lx, Ly] (exactly 2 elements).");
+            throw std::runtime_error("screen.dimensions must be [Lx, Ly]");
         }
         Lx = d[0].get<double>();
         Ly = d[1].get<double>();
     }
 
-    // position -> bottom-left ScreenSpec::P (required in spec)
-    if (!j.contains("position")) {
-        throw std::runtime_error("screen.position (bottom-left) is required.");
-    }
+    // bottom-left P (required)
+    if (!j.contains("position")) throw std::runtime_error("screen.position is required");
     const Vec3 P = as_vec3(j.at("position"));
 
-    // observer -> Camera::eye (required in spec)
-    if (!j.contains("observer")) {
-        throw std::runtime_error("screen.observer is required.");
-    }
+    // observer (eye) required
+    if (!j.contains("observer")) throw std::runtime_error("screen.observer is required");
     const Vec3 eye = as_vec3(j.at("observer"));
 
-    // Set up camera
-    cam.screen.P  = Point3{P.x, P.y, P.z};
-    cam.screen.Lx = Lx;
-    cam.screen.Ly = Ly;
+    cam.screen.P   = Point3{P.x, P.y, P.z};
+    cam.screen.Lx  = Lx;
+    cam.screen.Ly  = Ly;
     cam.screen.dpi = dpi;
-    cam.eye = Point3{eye.x, eye.y, eye.z};
+    cam.eye        = Point3{eye.x, eye.y, eye.z};
 }
 
 void parse_medium(const json& root, Scene& scene) {
@@ -192,20 +173,15 @@ std::shared_ptr<Primitive> make_sphere(const json& j) {
     const Vec3 c   = as_vec3(j.at("position"));
     const double r = j.at("radius").get<double>();
 
-    // Parse color block
-    const json& jc = j.at("color");
-    Material m = parse_color_block(jc);
+    Material m = parse_color_block(j.at("color"));
 
-    // Handle per-object index field (refractive index)
-    if (j.contains("index")) {
-        m.refractive_index = j.at("index").get<double>();
-    }
+    // per-object refractive index override
+    if (j.contains("index")) m.refractive_index = j.at("index").get<double>();
 
     auto mptr = std::make_shared<Material>(m);
     g_mats.push_back(mptr);
 
-    auto s = std::make_shared<Sphere>(Point3{c.x, c.y, c.z}, r, mptr.get());
-    return s;
+    return std::make_shared<Sphere>(Point3{c.x, c.y, c.z}, r, mptr.get());
 }
 
 std::shared_ptr<Primitive> make_halfspace(const json& j) {
@@ -215,38 +191,16 @@ std::shared_ptr<Primitive> make_halfspace(const json& j) {
     const Vec3 p0 = as_vec3(j.at("position"));
     Vec3 n        = as_vec3(j.at("normal"));
 
-    // Parse color block
-    const json& jc = j.at("color");
-    Material m = parse_color_block(jc);
-
-    // Handle per-object index field
-    if (j.contains("index")) {
-        m.refractive_index = j.at("index").get<double>();
-    }
+    Material m = parse_color_block(j.at("color"));
+    if (j.contains("index")) m.refractive_index = j.at("index").get<double>();
 
     auto mptr = std::make_shared<Material>(m);
     g_mats.push_back(mptr);
 
-    auto h = std::make_shared<HalfSpace>(Point3{p0.x, p0.y, p0.z}, Dir3{n.x, n.y, n.z}, mptr.get());
-    return h;
+    return std::make_shared<HalfSpace>(Point3{p0.x, p0.y, p0.z}, Dir3{n.x, n.y, n.z}, mptr.get());
 }
 
-// Helper to create material from either array or color block
-static Material mat_from_color_or_block(const json& j) {
-    if (j.is_array()) {
-        Material m;
-        m.albedo = as_rgb(j);
-        m.kd = 1.0;
-        m.ks = 0.0;
-        m.kr = 0.0;
-        m.kt = 0.0;
-        m.shininess = 1.0;
-        m.refractive_index = 1.0;
-        return m;
-    }
-    return parse_color_block(j);
-}
-
+// optional extension kept
 std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
     if (!jnode.contains("position") || !jnode.contains("radius")) {
         throw std::runtime_error("pokeball requires 'position' and 'radius'.");
@@ -254,7 +208,7 @@ std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
     const Vec3 c = as_vec3(jnode.at("position"));
     const double r = jnode.at("radius").get<double>();
 
-    // Default materials
+    // sensible defaults
     Material top, bottom, belt, ring, button;
     top.albedo    = Color(0.88,0.12,0.20); top.kd=1.0; top.ks=0.15; top.shininess=64;
     bottom.albedo = Color(0.95,0.95,0.98); bottom.kd=1.0; bottom.ks=0.08; bottom.shininess=32;
@@ -269,27 +223,25 @@ std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
 
     if (jnode.contains("colors")) {
         const json& jc = jnode.at("colors");
-        if (jc.contains("top"))     top    = mat_from_color_or_block(jc.at("top"));
-        if (jc.contains("bottom"))  bottom = mat_from_color_or_block(jc.at("bottom"));
-        if (jc.contains("belt"))    belt   = mat_from_color_or_block(jc.at("belt"));
-        if (jc.contains("ring"))    ring   = mat_from_color_or_block(jc.at("ring"));
-        if (jc.contains("button"))  button = mat_from_color_or_block(jc.at("button"));
+        if (jc.contains("top"))     top    = parse_color_block(jc.at("top"));
+        if (jc.contains("bottom"))  bottom = parse_color_block(jc.at("bottom"));
+        if (jc.contains("belt"))    belt   = parse_color_block(jc.at("belt"));
+        if (jc.contains("ring"))    ring   = parse_color_block(jc.at("ring"));
+        if (jc.contains("button"))  button = parse_color_block(jc.at("button"));
     }
-
-    if (jnode.contains("belt_half"))     belt_half  = jnode.at("belt_half").get<double>();
-    if (jnode.contains("button_outer"))  btn_outer  = jnode.at("button_outer").get<double>();
-    if (jnode.contains("ring_width"))    ring_width = jnode.at("ring_width").get<double>();
+    if (jnode.contains("belt_half"))    belt_half  = jnode.at("belt_half").get<double>();
+    if (jnode.contains("button_outer")) btn_outer  = jnode.at("button_outer").get<double>();
+    if (jnode.contains("ring_width"))   ring_width = jnode.at("ring_width").get<double>();
     if (jnode.contains("button_dir")) {
         const Vec3 d = as_vec3(jnode.at("button_dir"));
         btn_dir = Dir3{d.x, d.y, d.z};
     }
 
-    auto pb = std::make_shared<Pokeball>(
+    return std::make_shared<Pokeball>(
         Point3{c.x, c.y, c.z}, r,
         top, bottom, belt, ring, button,
         belt_half, btn_outer, ring_width, btn_dir
     );
-    return pb;
 }
 
 // ---------- transforms ----------
@@ -312,44 +264,40 @@ std::shared_ptr<Primitive> make_translation(const json& j) {
 std::shared_ptr<Primitive> make_rotation(const json& j) {
     if (!j.contains("angle") || !j.contains("direction") || !j.contains("subject"))
         throw std::runtime_error("rotation requires 'angle', 'direction', and 'subject'");
-    
+
     const double angle_deg = j.at("angle").get<double>();
     const int axis_i       = j.at("direction").get<int>();
-    
-    // Map according to spec: 0=x, 1=y, 2 or 3=z
-    Axis ax = Axis::Z;
-    if (axis_i == 0) ax = Axis::X;
+
+    Axis ax;
+    if (axis_i == 0)      ax = Axis::X;
     else if (axis_i == 1) ax = Axis::Y;
-    else ax = Axis::Z; // 2 or 3 both map to Z as per spec
-    
+    else if (axis_i == 2) ax = Axis::Z;
+    else throw std::runtime_error("rotation direction must be 0 (X), 1 (Y), or 2 (Z)");
+
     auto child = parse_object_node(j.at("subject"));
     return std::make_shared<Rotation>(child, ax, deg2rad(angle_deg));
 }
 
 // ---------- CSG operations ----------
-
-// For binary CSG (single "csg" object with left/right)
+// binary "csg" shape
 std::shared_ptr<Primitive> make_csg_binary(const json& j) {
     if (!j.contains("operator") || !j.contains("left") || !j.contains("right"))
         throw std::runtime_error("csg requires 'operator', 'left', 'right'");
-
     const std::string op = j.at("operator").get<std::string>();
     CSGOp cop;
     if      (op == "union")        cop = CSGOp::Union;
     else if (op == "intersection") cop = CSGOp::Intersection;
     else if (op == "difference")   cop = CSGOp::Difference;
-    else throw std::runtime_error("csg.operator must be one of: union/intersection/difference");
-
+    else throw std::runtime_error("csg.operator must be union/intersection/difference");
     auto lhs = parse_object_node(j.at("left"));
     auto rhs = parse_object_node(j.at("right"));
     return std::make_shared<CSG>(cop, lhs, rhs);
 }
 
-// For array-based CSG (fold-left over array)
+// left-fold over array for union/intersection
 std::shared_ptr<Primitive> fold_csg_array(const json& arr, CSGOp op) {
-    if (!arr.is_array() || arr.empty()) 
+    if (!arr.is_array() || arr.empty())
         throw std::runtime_error("CSG array must be a non-empty array");
-    
     std::shared_ptr<Primitive> acc = parse_object_node(arr.at(0));
     for (size_t i = 1; i < arr.size(); ++i) {
         auto rhs = parse_object_node(arr.at(i));
@@ -358,11 +306,10 @@ std::shared_ptr<Primitive> fold_csg_array(const json& arr, CSGOp op) {
     return acc;
 }
 
-// Special handling for "difference" arrays: O1 - O2 - O3 - ... - ON
+// O1 - O2 - ... - ON
 std::shared_ptr<Primitive> fold_difference_array(const json& arr) {
-    if (!arr.is_array() || arr.size() < 2) 
+    if (!arr.is_array() || arr.size() < 2)
         throw std::runtime_error("difference array must have at least 2 elements");
-    
     std::shared_ptr<Primitive> acc = parse_object_node(arr.at(0));
     for (size_t i = 1; i < arr.size(); ++i) {
         auto rhs = parse_object_node(arr.at(i));
@@ -378,11 +325,10 @@ std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
     const std::string kind = it.key();
     const json& val = it.value();
 
-    // Primitives - spec uses "halfSpace" (camelCase)
+    // Primitives (strict spellings)
     if (kind == "sphere")       return make_sphere(val);
-    if (kind == "halfSpace")    return make_halfspace(val);  // Exact spec name
-    if (kind == "halfspace")    return make_halfspace(val);  // Allow lowercase variant for compatibility
-    if (kind == "pokeball")     return make_pokeball(val);
+    if (kind == "halfSpace")    return make_halfspace(val);
+    if (kind == "pokeball")     return make_pokeball(val); // extension
 
     // Transforms
     if (kind == "scaling")      return make_scaling(val);
@@ -392,15 +338,15 @@ std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
     // Binary CSG
     if (kind == "csg")          return make_csg_binary(val);
 
-    // Array-based CSG
+    // Variadic CSG
     if (kind == "union")        return fold_csg_array(val, CSGOp::Union);
     if (kind == "intersection") return fold_csg_array(val, CSGOp::Intersection);
-    if (kind == "difference")   return fold_difference_array(val);  // Special handling per spec
+    if (kind == "difference")   return fold_difference_array(val);
 
     throw std::runtime_error("unknown object kind: " + kind);
 }
 
-} // anon namespace
+} // anon
 
 // ---------- public API ----------
 namespace jsonio {
@@ -412,52 +358,42 @@ Material make_material_from_color_block(const void* json_color_any) {
 
 bool load_scene_from_json_text(const std::string& json_text, Scene& scene, Camera& cam) {
     reset_pools();
-
     try {
         json root = json::parse(json_text);
 
-        // Parse all sections according to spec
         parse_screen(root, cam);
         parse_medium(root, scene);
         parse_sources(root, scene);
 
-        // Handle background color (optional)
         if (root.contains("background")) {
             const auto& jb = root.at("background");
-            if (!jb.is_array() || jb.size() != 3)
-                throw std::runtime_error("background must be array[3] with RGB values");
             scene.background = as_rgb(jb);
         }
 
-        // Parse objects array
         scene.objects.clear();
         if (root.contains("objects")) {
             const json& arr = root.at("objects");
             if (!arr.is_array()) throw std::runtime_error("'objects' must be an array");
-            
             for (const auto& node : arr) {
                 auto prim = parse_object_node(node);
                 if (prim) {
-                    g_nodes.push_back(prim);                 // own it in pool
-                    scene.objects.push_back(prim.get());     // scene keeps raw ptr
+                    g_nodes.push_back(prim);
+                    scene.objects.push_back(prim.get());
                 }
             }
         }
-
         return true;
     } catch (const json::parse_error& e) {
-        throw std::runtime_error("JSON parse error: " + std::string(e.what()));
+        throw std::runtime_error(std::string("JSON parse error: ") + e.what());
     } catch (const std::exception& e) {
-        throw std::runtime_error("JSON processing error: " + std::string(e.what()));
+        throw std::runtime_error(std::string("JSON processing error: ") + e.what());
     }
 }
 
 bool load_scene_from_json(const std::string& filename, Scene& scene, Camera& cam) {
     std::ifstream ifs(filename);
     if (!ifs) throw std::runtime_error("Cannot open JSON file: " + filename);
-    
-    std::ostringstream ss; 
-    ss << ifs.rdbuf();
+    std::ostringstream ss; ss << ifs.rdbuf();
     return load_scene_from_json_text(ss.str(), scene, cam);
 }
 

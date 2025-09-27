@@ -27,4 +27,14 @@ TEST_CASE("Camera ray generation", "[camera]") {
         // Should return fallback ray
         REQUIRE(ray.d.z == Catch::Approx(-1.0));
     }
+    
+    SECTION("Ray direction is normalized") {
+        Ray ray = cam.generate_ray(0, 0);
+        REQUIRE(ray.d.length() == Catch::Approx(1.0));
+    }
+    
+    SECTION("Default DPI is 72") {
+        Camera default_cam;
+        REQUIRE(default_cam.screen.dpi == 72);
+    }
 }

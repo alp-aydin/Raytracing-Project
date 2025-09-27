@@ -7,7 +7,7 @@ struct ScreenSpec {
     Point3 P{0,0,0};   // bottom-left corner of the screen
     double Lx{1.0};    // width  in scene units
     double Ly{1.0};    // height in scene units
-    int    dpi{100};   // dots (pixels) per unit length
+    int    dpi{72};    // dots (pixels) per unit length - spec default is 72
 
     inline int nx() const { return std::max(1, int(std::round(Lx * dpi))); }
     inline int ny() const { return std::max(1, int(std::round(Ly * dpi))); }
@@ -38,23 +38,27 @@ struct Camera {
         const double sy = (double(jf) + 0.5) / double(ny);
 
         // point on screen: S = P + sx*U + sy*V
-        const Point3 S = screen.P
-                       + screen.U() * sx
-                       + screen.V() * sy;
+        const Point3 S = Point3(screen.P.x + screen.U().x * sx + screen.V().x * sy,
+                               screen.P.y + screen.U().y * sx + screen.V().y * sy,
+                               screen.P.z + screen.U().z * sx + screen.V().z * sy);
 
-        Dir3 d = (S - eye).normalized();
+        Dir3 d = Dir3(S.x - eye.x, S.y - eye.y, S.z - eye.z).normalized();
         return Ray{eye, d};
     }
 
     inline Ray generate_ray_subpixel(int i, int j, double dx, double dy) const {
-    const int nx = screen.nx();
-    const int ny = screen.ny();
+        const int nx = screen.nx();
+        const int ny = screen.ny();
 
-    // jitter around the pixel center
-    const double sx = (i + 0.5 + dx) / double(nx);
-    const double sy = (j + 0.5 + dy) / double(ny);
+        // jitter around the pixel center
+        const double sx = (i + 0.5 + dx) / double(nx);
+        const double sy = (j + 0.5 + dy) / double(ny);
 
-    const Point3 S = screen.P + screen.U() * sx + screen.V() * sy;
-    return Ray{ eye, (S - eye).normalized() };
-}
+        const Point3 S = Point3(screen.P.x + screen.U().x * sx + screen.V().x * sy,
+                               screen.P.y + screen.U().y * sx + screen.V().y * sy,
+                               screen.P.z + screen.U().z * sx + screen.V().z * sy);
+        
+        Dir3 d = Dir3(S.x - eye.x, S.y - eye.y, S.z - eye.z).normalized();
+        return Ray{eye, d};
+    }
 };
