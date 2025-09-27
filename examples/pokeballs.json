@@ -1,0 +1,184 @@
+{
+    "screen": {
+        "dpi": 256,
+        "dimensions": [4, 3],
+        "position": [-2, -1.5, 0],
+        "observer": [0, 1, -6]
+    },
+    
+    "background": [0.4, 0.6, 0.9],
+    
+    "medium": {
+        "ambient": [0.5, 0.55, 0.6],
+        "index": 1.0,
+        "recursion": 2
+    },
+    
+    "sources": [
+        {
+            "position": [-4, 6, -4],
+            "intensity": [15, 15, 15]
+        },
+        {
+            "position": [4, 4, -5],
+            "intensity": [10, 10, 15]
+        },
+        {
+            "position": [0, 3, -8],
+            "intensity": [10, 10, 10]
+        },
+        {
+            "position": [0, 5, 3],
+            "intensity": [10, 10, 10]
+        },
+        {
+            "position": [0, -3, -3],
+            "intensity": [15, 5, 20]
+        }
+    ],
+    
+    "objects": [
+        {
+            "pokeball": {
+                "position": [0, 0.5, 1],
+                "radius": 1.2,
+                "colors": {
+                    "top": {
+                        "diffuse": [0.88, 0.12, 0.20],
+                        "ambient": [0.35, 0.05, 0.08],
+                        "specular": [0.9, 0.9, 0.9],
+                        "shininess": 64
+                    },
+                    "bottom": {
+                        "diffuse": [0.95, 0.95, 0.98],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.8, 0.8, 0.8],
+                        "shininess": 32
+                    },
+                    "belt": {
+                        "diffuse": [0.12, 0.12, 0.15],
+                        "ambient": [0.08, 0.08, 0.10],
+                        "specular": [0.3, 0.3, 0.3],
+                        "shininess": 16
+                    },
+                    "ring": {
+                        "diffuse": [0.35, 0.35, 0.40],
+                        "ambient": [0.15, 0.15, 0.17],
+                        "specular": [0.4, 0.4, 0.4],
+                        "shininess": 20
+                    },
+                    "button": {
+                        "diffuse": [0.96, 0.96, 0.99],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.9, 0.9, 0.9],
+                        "shininess": 80
+                    }
+                },
+                "belt_half": 0.08,
+                "button_outer": 0.25,
+                "ring_width": 0.05,
+                "button_dir": [-0.15, 0.4, -0.9]
+            }
+        },
+        
+        {
+            "pokeball": {
+                "position": [-1.8, 0.3, 0.5],
+                "radius": 0.5,
+                "colors": {
+                    "top": {
+                        "diffuse": [0.9, 0.8, 0.1],
+                        "ambient": [0.36, 0.32, 0.05],
+                        "specular": [0.9, 0.9, 0.7],
+                        "shininess": 64
+                    },
+                    "bottom": {
+                        "diffuse": [0.95, 0.95, 0.98],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.8, 0.8, 0.8],
+                        "shininess": 32
+                    },
+                    "belt": {
+                        "diffuse": [0.12, 0.12, 0.15],
+                        "ambient": [0.08, 0.08, 0.10],
+                        "specular": [0.3, 0.3, 0.3],
+                        "shininess": 16
+                    },
+                    "ring": {
+                        "diffuse": [0.35, 0.35, 0.40],
+                        "ambient": [0.15, 0.15, 0.17],
+                        "specular": [0.4, 0.4, 0.4],
+                        "shininess": 20
+                    },
+                    "button": {
+                        "diffuse": [0.96, 0.96, 0.99],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.9, 0.9, 0.9],
+                        "shininess": 80
+                    }
+                },
+                "belt_half": 0.08,
+                "button_outer": 0.25,
+                "ring_width": 0.05,
+                "button_dir": [0.7, 0, -0.7]
+            }
+        },
+        
+        {
+            "pokeball": {
+                "position": [2.2, 0.2, 1.5],
+                "radius": 0.35,
+                "colors": {
+                    "top": {
+                        "diffuse": [0.6, 0.2, 0.7],
+                        "ambient": [0.24, 0.08, 0.28],
+                        "specular": [0.8, 0.7, 0.9],
+                        "shininess": 64
+                    },
+                    "bottom": {
+                        "diffuse": [0.95, 0.95, 0.98],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.8, 0.8, 0.8],
+                        "shininess": 32
+                    },
+                    "belt": {
+                        "diffuse": [0.12, 0.12, 0.15],
+                        "ambient": [0.08, 0.08, 0.10],
+                        "specular": [0.3, 0.3, 0.3],
+                        "shininess": 16
+                    },
+                    "ring": {
+                        "diffuse": [0.35, 0.35, 0.40],
+                        "ambient": [0.15, 0.15, 0.17],
+                        "specular": [0.4, 0.4, 0.4],
+                        "shininess": 20
+                    },
+                    "button": {
+                        "diffuse": [0.96, 0.96, 0.99],
+                        "ambient": [0.40, 0.40, 0.41],
+                        "specular": [0.9, 0.9, 0.9],
+                        "shininess": 80
+                    }
+                },
+                "belt_half": 0.08,
+                "button_outer": 0.25,
+                "ring_width": 0.05,
+                "button_dir": [-0.5, 0.2, -0.84]
+            }
+        },
+        
+        {
+            "halfSpace": {
+                "position": [0, -0.7, 0],
+                "normal": [0, 1, 0],
+                "color": {
+                    "ambient": [0.15, 0.20, 0.15],
+                    "diffuse": [0.2, 0.5, 0.25],
+                    "specular": [0.3, 0.4, 0.3],
+                    "shininess": 24
+                },
+                "index": 1.0
+            }
+        }
+    ]
+}

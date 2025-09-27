@@ -1,0 +1,23 @@
+# What to parse
+INPUT                 = include src
+FILE_PATTERNS         = *.h *.hpp *.cpp
+RECURSIVE             = YES
+EXCLUDE_PATTERNS      = */build/* */.git/* */extern/*
+
+# Make it pick up undocumented stuff (optional)
+EXTRACT_ALL           = YES
+
+# Diagrams (needs Graphviz 'dot', which you have)
+HAVE_DOT              = YES
+UML_LOOK              = YES
+CLASS_DIAGRAMS        = YES
+DOT_CLEANUP           = NO 
+CALL_GRAPH            = YES
+CALLER_GRAPH          = YES
+DOT_IMAGE_FORMAT      = png
+DOT_GRAPH_MAX_NODES   = 999
+DOT_TRANSPARENT       = YES
+
+# Output
+GENERATE_HTML         = YES
+GENERATE_LATEX        = NO

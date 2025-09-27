@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 3,
   "configurePresets": [
     {
       "name": "ninja-vcpkg",
@@ -10,12 +10,6 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "ninja-vcpkg",
-      "configurePreset": "ninja-vcpkg"
     }
   ]
 }

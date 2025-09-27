@@ -1,0 +1,76 @@
+{
+  "screen": {
+    "dpi": 300,
+    "dimensions": [4, 3],
+    "position": [-2.0, -1.5, 0.0],
+    "observer": [0.0, 0.0, 5.0]
+  },
+  "medium": {
+    "ambient": [0.10, 0.10, 0.12],
+    "index": 1.0,
+    "recursion": 1
+  },
+  "sources": [
+    { "position": [5.0, 6.0, 8.0],  "intensity": [55.0, 55.0, 55.0] },
+    { "position": [-5.0, 6.0, 8.0], "intensity": [40.0, 40.0, 40.0] },
+    { "position": [0.0, 3.0, 7.0],  "intensity": [26.0, 26.0, 26.0] }
+  ],
+  "background": [0.45, 0.74, 1.00],
+  "objects": [
+    { 
+      "halfSpace": {
+        "position": [0.0, -1.6, 0.0],
+        "normal": [0.0, 1.0, 0.0],
+        "color": { "diffuse": [0.35, 0.70, 0.35], "specular": [0.0, 0.0, 0.0], "shininess": 1 },
+        "index": 1
+      }
+    },
+
+    { "sphere": { "position": [0.0, -5.0, -10.0], "radius": 9.0, "color": { "diffuse": [0.42, 0.80, 0.42], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+    { "sphere": { "position": [4.0, -5.5, -11.0], "radius": 8.0, "color": { "diffuse": [0.38, 0.78, 0.38], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+    { "sphere": { "position": [-4.5, -5.2, -11.8], "radius": 8.5, "color": { "diffuse": [0.40, 0.76, 0.40], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+
+    { "sphere": { "position": [-1.6, 1.2, -7.5], "radius": 0.55, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [-2.0, 1.0, -7.3], "radius": 0.40, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [-1.2, 1.0, -7.3], "radius": 0.42, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+
+    { "sphere": { "position": [1.6, 1.1, -8.2], "radius": 0.60, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [2.0, 0.95, -8.0], "radius": 0.42, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [1.2, 0.95, -8.0], "radius": 0.44, "color": { "diffuse": [0.98, 0.98, 0.98], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+
+    { "sphere": { "position": [3.0, -0.9, -6.0], "radius": 0.20, "color": { "diffuse": [0.55, 0.35, 0.20], "specular": [0.03, 0.03, 0.03], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [3.0, -0.5, -6.0], "radius": 0.35, "color": { "diffuse": [0.20, 0.60, 0.25], "specular": [0.03, 0.03, 0.03], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [2.8, -0.6, -6.1], "radius": 0.28, "color": { "diffuse": [0.22, 0.62, 0.27], "specular": [0.03, 0.03, 0.03], "shininess": 6 }, "index": 1 } },
+    { "sphere": { "position": [3.2, -0.6, -5.9], "radius": 0.28, "color": { "diffuse": [0.22, 0.62, 0.27], "specular": [0.03, 0.03, 0.03], "shininess": 6 }, "index": 1 } },
+
+    {
+      "translation": {
+        "factors": [0.0, -0.30, 0.0],
+        "subject": {
+          "union": [
+            { "sphere": { "position": [0.0, 0.0, -2.6], "radius": 1.25, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.15, 0.15, 0.15], "shininess": 32 }, "index": 1 } },
+            { "sphere": { "position": [0.0, 0.95, -2.5], "radius": 0.72, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.15, 0.15, 0.15], "shininess": 32 }, "index": 1 } },
+            { "sphere": { "position": [-0.52, 1.35, -2.7], "radius": 0.20, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.15, 0.15, 0.15], "shininess": 32 }, "index": 1 } },
+            { "sphere": { "position": [0.52, 1.35, -2.7], "radius": 0.20, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.15, 0.15, 0.15], "shininess": 32 }, "index": 1 } },
+            { "sphere": { "position": [-0.95, 0.25, -2.32], "radius": 0.52, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.12, 0.12, 0.12], "shininess": 24 }, "index": 1 } },
+            { "sphere": { "position": [0.95, 0.25, -2.32], "radius": 0.52, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.12, 0.12, 0.12], "shininess": 24 }, "index": 1 } },
+            { "sphere": { "position": [-0.65, -0.95, -2.0], "radius": 0.63, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.10, 0.10, 0.10], "shininess": 20 }, "index": 1 } },
+            { "sphere": { "position": [0.65, -0.95, -2.0], "radius": 0.63, "color": { "diffuse": [0.08, 0.25, 0.25], "specular": [0.10, 0.10, 0.10], "shininess": 20 }, "index": 1 } },
+            { "sphere": { "position": [0.0, -0.15, -1.67], "radius": 0.92, "color": { "diffuse": [0.95, 0.95, 0.88], "specular": [0.05, 0.05, 0.05], "shininess": 8 }, "index": 1 } },
+            { "sphere": { "position": [0.0, 0.90, -1.79], "radius": 0.14, "color": { "diffuse": [0.98, 0.82, 0.70], "specular": [0.05, 0.05, 0.05], "shininess": 6 }, "index": 1 } },
+            { "sphere": { "position": [-0.22, 1.05, -1.84], "radius": 0.06, "color": { "diffuse": [0.05, 0.05, 0.05], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+            { "sphere": { "position": [0.22, 1.05, -1.84], "radius": 0.06, "color": { "diffuse": [0.05, 0.05, 0.05], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+            { "sphere": { "position": [-0.12, 0.82, -1.76], "radius": 0.03, "color": { "diffuse": [0.98, 0.82, 0.70], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+            { "sphere": { "position": [0.12, 0.82, -1.76], "radius": 0.03, "color": { "diffuse": [0.98, 0.82, 0.70], "specular": [0.02, 0.02, 0.02], "shininess": 4 }, "index": 1 } },
+            { "sphere": { "position": [-0.90, 0.00, -1.77], "radius": 0.06, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } },
+            { "sphere": { "position": [-0.78, -0.12, -1.74], "radius": 0.05, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } },
+            { "sphere": { "position": [-1.00, 0.12, -1.80], "radius": 0.05, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } },
+            { "sphere": { "position": [0.90, 0.00, -1.77], "radius": 0.06, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } },
+            { "sphere": { "position": [1.00, 0.12, -1.80], "radius": 0.05, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } },
+            { "sphere": { "position": [0.78, -0.12, -1.74], "radius": 0.05, "color": { "diffuse": [0.95, 0.95, 0.95], "specular": [0.10, 0.10, 0.10], "shininess": 10 }, "index": 1 } }
+          ]
+        }
+      }
+    }
+  ]
+}
