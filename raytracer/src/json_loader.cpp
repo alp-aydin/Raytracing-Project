@@ -23,39 +23,63 @@ using nlohmann::json;
 
 namespace {
 
-// ---------- lifetime pools (Scene stores raw pointers) ----------
+/// Object/material ownership pools (Scene stores raw pointers).
 static std::vector<std::shared_ptr<Primitive>> g_nodes;    // own primitives
+/// Object/material ownership pools (Scene stores raw pointers).
 static std::vector<std::shared_ptr<Material>>  g_mats;     // own materials
 
+/// Clear ownership pools at the start of a new load.
 inline void reset_pools() {
     g_nodes.clear();
     g_mats.clear();
 }
 
-// ---------- small helpers ----------
+/**
+ * @brief Read key or fallback from a JSON object.
+ * @param j Source object.
+ * @param key Property to read.
+ * @param fallback Value returned if key is absent.
+ * @return Parsed value of T or fallback.
+ */
 template <typename T>
 T get_or(const json& j, const char* key, const T& fallback) {
     if (!j.contains(key)) return fallback;
     return j.at(key).get<T>();
 }
 
+/**
+ * @brief Parse a JSON array[3] into Vec3.
+ * @param arr JSON array with 3 doubles.
+ * @return Vec3 filled from arr.
+ */
 inline Vec3 as_vec3(const json& arr) {
     if (!arr.is_array() || arr.size() != 3) throw std::runtime_error("Expected array[3]");
     return Vec3(arr[0].get<double>(), arr[1].get<double>(), arr[2].get<double>());
 }
 
+/**
+ * @brief Parse a JSON array[3] into linear RGB Color.
+ * @param arr JSON array with 3 doubles.
+ * @return Color filled from arr.
+ */
 inline Color as_rgb(const json& arr) {
     if (!arr.is_array() || arr.size() != 3) throw std::runtime_error("Expected color array[3]");
     return Color(arr[0].get<double>(), arr[1].get<double>(), arr[2].get<double>());
 }
 
+/// Ensure node is a one-entry object (tagged union form).
 inline void ensure_object_1key(const json& j) {
     if (!j.is_object() || j.size() != 1) throw std::runtime_error("Each object node must be a one-entry object");
 }
 
+/// Degrees-to-radians conversion.
 static inline double deg2rad(double d){ return d * M_PI / 180.0; }
 
-// ---------- materials ----------
+/**
+ * @brief Build a Material from a "color" block.
+ * @param jcolor JSON object with fields: diffuse, ambient, specular, reflected, refracted, shininess.
+ * @return Material ready for shading (ks/kr/kt derived from input colors).
+ */
 Material parse_color_block(const json& jcolor) {
     if (!jcolor.is_object()) {
         throw std::runtime_error("color must be an object");
@@ -98,10 +122,14 @@ Material parse_color_block(const json& jcolor) {
     return m;
 }
 
-// ---------- forward decl ----------
+/// Forward declaration for object node dispatcher.
 std::shared_ptr<Primitive> parse_object_node(const json& jnode);
 
-// ---------- screen / medium / lights ----------
+/**
+ * @brief Parse "screen" block into Camera.
+ * @param root Root JSON object.
+ * @param cam Output camera with screen/eye set.
+ */
 void parse_screen(const json& root, Camera& cam) {
     if (!root.contains("screen")) return;
     const json& j = root.at("screen");
@@ -135,6 +163,11 @@ void parse_screen(const json& root, Camera& cam) {
     cam.eye        = Point3{eye.x, eye.y, eye.z};
 }
 
+/**
+ * @brief Parse "medium" block into Scene globals.
+ * @param root Root JSON object.
+ * @param scene Output scene (ambient, IOR, recursion limit).
+ */
 void parse_medium(const json& root, Scene& scene) {
     if (!root.contains("medium")) return;
     const json& jm = root.at("medium");
@@ -150,6 +183,11 @@ void parse_medium(const json& root, Scene& scene) {
     }
 }
 
+/**
+ * @brief Parse point lights from "sources" array.
+ * @param root Root JSON object.
+ * @param scene Output scene with appended lights.
+ */
 void parse_sources(const json& root, Scene& scene) {
     if (!root.contains("sources")) return;
     const json& arr = root.at("sources");
@@ -165,7 +203,11 @@ void parse_sources(const json& root, Scene& scene) {
     }
 }
 
-// ---------- primitives ----------
+/**
+ * @brief Construct a Sphere from JSON.
+ * @param j Object payload with position, radius, color, optional index.
+ * @return Shared primitive; material stored in pool.
+ */
 std::shared_ptr<Primitive> make_sphere(const json& j) {
     if (!j.contains("position") || !j.contains("radius") || !j.contains("color"))
         throw std::runtime_error("sphere requires 'position', 'radius', 'color'");
@@ -184,6 +226,11 @@ std::shared_ptr<Primitive> make_sphere(const json& j) {
     return std::make_shared<Sphere>(Point3{c.x, c.y, c.z}, r, mptr.get());
 }
 
+/**
+ * @brief Construct a HalfSpace from JSON.
+ * @param j Object payload with position, normal, color, optional index.
+ * @return Shared primitive; material stored in pool.
+ */
 std::shared_ptr<Primitive> make_halfspace(const json& j) {
     if (!j.contains("position") || !j.contains("normal") || !j.contains("color"))
         throw std::runtime_error("halfSpace requires 'position', 'normal', 'color'");
@@ -200,6 +247,11 @@ std::shared_ptr<Primitive> make_halfspace(const json& j) {
     return std::make_shared<HalfSpace>(Point3{p0.x, p0.y, p0.z}, Dir3{n.x, n.y, n.z}, mptr.get());
 }
 
+/**
+ * @brief Construct a Pokeball (extension) from JSON.
+ * @param jnode Payload with position, radius, optional colors and button controls.
+ * @return Shared primitive with region materials configured.
+ */
 // optional extension kept
 std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
     if (!jnode.contains("position") || !jnode.contains("radius")) {
@@ -244,7 +296,11 @@ std::shared_ptr<Primitive> make_pokeball(const json& jnode) {
     );
 }
 
-// ---------- transforms ----------
+/**
+ * @brief Wrap a child in a Scaling transform.
+ * @param j Payload with factors [sx,sy,sz] and subject node.
+ * @return Transformed primitive.
+ */
 std::shared_ptr<Primitive> make_scaling(const json& j) {
     if (!j.contains("factors") || !j.contains("subject"))
         throw std::runtime_error("scaling requires 'factors' and 'subject'");
@@ -253,6 +309,11 @@ std::shared_ptr<Primitive> make_scaling(const json& j) {
     return std::make_shared<Scaling>(child, Vec3{s.x, s.y, s.z});
 }
 
+/**
+ * @brief Wrap a child in a Translation transform.
+ * @param j Payload with factors [tx,ty,tz] and subject node.
+ * @return Transformed primitive.
+ */
 std::shared_ptr<Primitive> make_translation(const json& j) {
     if (!j.contains("factors") || !j.contains("subject"))
         throw std::runtime_error("translation requires 'factors' and 'subject'");
@@ -261,6 +322,11 @@ std::shared_ptr<Primitive> make_translation(const json& j) {
     return std::make_shared<Translation>(child, Vec3{t.x, t.y, t.z});
 }
 
+/**
+ * @brief Wrap a child in a Rotation transform.
+ * @param j Payload with angle (deg), direction axis index {0,1,2}, and subject node.
+ * @return Transformed primitive.
+ */
 std::shared_ptr<Primitive> make_rotation(const json& j) {
     if (!j.contains("angle") || !j.contains("direction") || !j.contains("subject"))
         throw std::runtime_error("rotation requires 'angle', 'direction', and 'subject'");
@@ -278,6 +344,11 @@ std::shared_ptr<Primitive> make_rotation(const json& j) {
     return std::make_shared<Rotation>(child, ax, deg2rad(angle_deg));
 }
 
+/**
+ * @brief Construct a binary CSG node from JSON.
+ * @param j Payload with operator ("union","intersection","difference"), left, right.
+ * @return Composed CSG primitive.
+ */
 // ---------- CSG operations ----------
 // binary "csg" shape
 std::shared_ptr<Primitive> make_csg_binary(const json& j) {
@@ -294,6 +365,12 @@ std::shared_ptr<Primitive> make_csg_binary(const json& j) {
     return std::make_shared<CSG>(cop, lhs, rhs);
 }
 
+/**
+ * @brief Fold an array of nodes with a CSG op (union/intersection).
+ * @param arr Non-empty array of nodes.
+ * @param op Operation applied left-to-right.
+ * @return Composed CSG primitive.
+ */
 // left-fold over array for union/intersection
 std::shared_ptr<Primitive> fold_csg_array(const json& arr, CSGOp op) {
     if (!arr.is_array() || arr.empty())
@@ -306,6 +383,11 @@ std::shared_ptr<Primitive> fold_csg_array(const json& arr, CSGOp op) {
     return acc;
 }
 
+/**
+ * @brief Left-fold a difference list: O1 - O2 - ... - ON.
+ * @param arr Array with at least two elements.
+ * @return Composed CSG primitive.
+ */
 // O1 - O2 - ... - ON
 std::shared_ptr<Primitive> fold_difference_array(const json& arr) {
     if (!arr.is_array() || arr.size() < 2)
@@ -318,6 +400,11 @@ std::shared_ptr<Primitive> fold_difference_array(const json& arr) {
     return acc;
 }
 
+/**
+ * @brief Dispatch an object node to its concrete builder.
+ * @param jnode One-entry object: {kind: payload}.
+ * @return Constructed primitive (possibly transformed/CSG).
+ */
 // ---------- dispatcher ----------
 std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
     ensure_object_1key(jnode);
@@ -351,11 +438,23 @@ std::shared_ptr<Primitive> parse_object_node(const json& jnode) {
 // ---------- public API ----------
 namespace jsonio {
 
+/**
+ * @brief Convert a color-block JSON object (opaque pointer) to Material.
+ * @param json_color_any Pointer to nlohmann::json color object.
+ * @return Material parsed as in scene files.
+ */
 Material make_material_from_color_block(const void* json_color_any) {
     const json& j = *reinterpret_cast<const json*>(json_color_any);
     return parse_color_block(j);
 }
 
+/**
+ * @brief Parse a scene from JSON text.
+ * @param json_text UTF-8 JSON string.
+ * @param scene Output scene (background, lights, objects).
+ * @param cam Output camera.
+ * @return true on success; throws on parse/validation errors.
+ */
 bool load_scene_from_json_text(const std::string& json_text, Scene& scene, Camera& cam) {
     reset_pools();
     try {
@@ -390,6 +489,13 @@ bool load_scene_from_json_text(const std::string& json_text, Scene& scene, Camer
     }
 }
 
+/**
+ * @brief Parse a scene from a JSON file on disk.
+ * @param filename Path to scene.json.
+ * @param scene Output scene.
+ * @param cam Output camera.
+ * @return true on success; throws on I/O or parse errors.
+ */
 bool load_scene_from_json(const std::string& filename, Scene& scene, Camera& cam) {
     std::ifstream ifs(filename);
     if (!ifs) throw std::runtime_error("Cannot open JSON file: " + filename);

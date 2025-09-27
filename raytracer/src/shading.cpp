@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 
+/// Component-wise "screen" blend: 1 - (1-a)*(1-b).
 Color combine(const Color& a, const Color& b) {
     return { 
         1.0 - (1.0 - a.r) * (1.0 - b.r),
@@ -10,16 +11,23 @@ Color combine(const Color& a, const Color& b) {
     };
 }
 
-// Hadamard (element-wise) product for colors
+/// Hadamard (element-wise) product for colors.
 Color mul(const Color& a, const Color& b) {
     return { a.r * b.r, a.g * b.g, a.b * b.b };
 }
 
-// Helper function to avoid operator conflicts with Color::operator*
+/// Scalar multiply color by s.
 Color scale(const Color& c, double s) {
     return { c.r * s, c.g * s, c.b * s };
 }
 
+/**
+ * @brief Lambert + Phong shading with ambient, dir/point lights, and hard shadows.
+ * @param scene World containing lights and ambient term.
+ * @param hit Surface interaction (p, n, material).
+ * @param wo Unit view direction pointing toward the camera.
+ * @return Shaded color estimate at the hit.
+ */
 Color shade_lambert_phong(const Scene& scene, const Hit& hit, const Dir3& wo)
 {
     if (!hit.mat) return {1,0,1}; // Magenta for missing material

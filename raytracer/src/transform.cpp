@@ -5,6 +5,16 @@
 // but avoids the matrix inverse complexity for now
 
 // -------- Translation --------
+
+/**
+ * @brief Intersect child under a translation transform.
+ * Applies inverse translation to the ray, queries the child, then maps the hit back to world.
+ * @param r World-space ray.
+ * @param tmin Inclusive lower bound for valid t.
+ * @param tmax Exclusive upper bound for valid t.
+ * @param out Filled with closest hit in range, with oriented normal.
+ * @return true if an intersection in (tmin,tmax) is found.
+ */
 bool Translation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     if (!child) return false;
     
@@ -34,6 +44,16 @@ bool Translation::intersect(const Ray& r, double tmin, double tmax, Hit& out) co
     return true;
 }
 
+/**
+ * @brief Entry/exit interval for translated child.
+ * Transforms the ray to local space, queries the child interval, then maps both hits back.
+ * @param r World-space ray.
+ * @param tEnter Entry parameter (output).
+ * @param tExit Exit parameter (output).
+ * @param enterHit Entry boundary hit (position/normal oriented to ray).
+ * @param exitHit Exit boundary hit (position/normal oriented to ray).
+ * @return true if the child provides a valid interval.
+ */
 bool Translation::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
     
@@ -62,6 +82,16 @@ bool Translation::interval(const Ray& r, double& tEnter, double& tExit, Hit& ent
 }
 
 // -------- Scaling --------
+
+/**
+ * @brief Intersect child under non-uniform scaling.
+ * Uses inverse scale on ray to query child; maps hit back with inverse-transposed normal.
+ * @param r World-space ray.
+ * @param tmin Inclusive lower bound for valid t.
+ * @param tmax Exclusive upper bound for valid t.
+ * @param out Filled with closest hit in range.
+ * @return true on hit; false if degenerate scales or miss.
+ */
 bool Scaling::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     if (!child) return false;
     
@@ -97,6 +127,16 @@ bool Scaling::intersect(const Ray& r, double tmin, double tmax, Hit& out) const 
     return true;
 }
 
+/**
+ * @brief Entry/exit interval for scaled child.
+ * Transforms the ray by inverse scale, queries child, and maps boundary hits and normals back.
+ * @param r World-space ray.
+ * @param tEnter Entry parameter (output).
+ * @param tExit Exit parameter (output).
+ * @param enterHit Entry boundary hit (position/normal oriented to ray).
+ * @param exitHit Exit boundary hit (position/normal oriented to ray).
+ * @return true if the child provides a valid interval; false for degenerate scales.
+ */
 bool Scaling::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
     
@@ -129,6 +169,16 @@ bool Scaling::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHi
 }
 
 // -------- Rotation --------  
+
+/**
+ * @brief Intersect child under axis-angle rotation.
+ * Applies inverse rotation to ray, queries child, and rotates hit back to world.
+ * @param r World-space ray.
+ * @param tmin Inclusive lower bound for valid t.
+ * @param tmax Exclusive upper bound for valid t.
+ * @param out Filled with closest hit in range.
+ * @return true on hit in (tmin,tmax).
+ */
 bool Rotation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     if (!child) return false;
     
@@ -162,6 +212,16 @@ bool Rotation::intersect(const Ray& r, double tmin, double tmax, Hit& out) const
     return true;
 }
 
+/**
+ * @brief Entry/exit interval for rotated child.
+ * Uses inverse rotation on the ray, queries child interval, and rotates boundary hits back.
+ * @param r World-space ray.
+ * @param tEnter Entry parameter (output).
+ * @param tExit Exit parameter (output).
+ * @param enterHit Entry boundary hit (position/normal oriented to ray).
+ * @param exitHit Exit boundary hit (position/normal oriented to ray).
+ * @return true if a valid interval is produced by the child.
+ */
 bool Rotation::interval(const Ray& r, double& tEnter, double& tExit, Hit& enterHit, Hit& exitHit) const {
     if (!child) return false;
     

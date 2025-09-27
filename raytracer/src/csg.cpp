@@ -5,20 +5,29 @@
 #include <limits>
 #include <vector>
 
+/**
+ * @brief CSG boolean operations along a ray using a boundary-event sweep.
+ * Defines local helpers: tolerances, event types/structs, ordering,
+ * origin-inside test, boolean combiner, and normal flip.
+ */
 namespace {
+    /// Tolerance for comparisons.
     constexpr double EPS = 1e-6;
+    /// Positive infinity shortcut.
     constexpr double INF = std::numeric_limits<double>::infinity();
 
+    /// Enter/Exit tags for boundary events.
     enum class EdgeType { Enter, Exit };
 
+    /// Boundary event along the ray with owning child and hit payload.
     struct Event {
         double t{};
-        EdgeType type{};   // Enter or Exit
-        int who{};         // 0 = A, 1 = B
-        Hit hit{};         // carry full hit (p, n, mat)
+        EdgeType type{};
+        int who{};   // 0 = A, 1 = B
+        Hit hit{};
     };
 
-    // Sort by t; for ties process Enter before Exit; then A before B (deterministic).
+    /// Sort by t, then Enter before Exit, then A before B.
     inline bool event_less(const Event& a, const Event& b) {
         if (a.t < b.t - EPS) return true;
         if (a.t > b.t + EPS) return false;
@@ -26,23 +35,29 @@ namespace {
         return a.who < b.who;
     }
 
+    /// Inside if enter before 0 and exit after 0.
     inline bool inside_at_origin(double t0, double t1) {
-        // "inside at t=0" if enter < 0 < exit. Works with +/-INF.
         return (t0 < EPS) && (t1 > EPS);
     }
 
+    /// Boolean combination for A and B.
     inline bool combine(bool inA, bool inB, CSGOp op) {
         switch (op) {
             case CSGOp::Union:        return inA || inB;
             case CSGOp::Intersection: return inA && inB;
-            case CSGOp::Difference:   return inA && !inB; // A \ B
+            case CSGOp::Difference:   return inA && !inB;
         }
         return false;
     }
 
+    /// Flip a normal direction.
     inline void flip_dir3(Dir3& n) { n = Dir3{-n.x, -n.y, -n.z}; }
 }
 
+/**
+ * @brief Compute the first inside interval [tEnter, tExit] for this CSG node.
+ * Returns false if empty; on success fills enter/exit times and hits.
+ */
 bool CSG::interval(const Ray& ray,
                    double& tEnter, double& tExit,
                    Hit& enterHit, Hit& exitHit) const
@@ -121,8 +136,7 @@ bool CSG::interval(const Ray& ray,
             haveEnter = true;
             tEnt = e.t;
             hEnter = e.h;
-            // For A\B entering via B's EXIT (who=1, Exit) we keep B's hit, but flip normal because
-            // that face is seen from the "inside" of B.
+            // For A\B entering via B's EXIT (who=1, Exit) flip normal
             if (op_ == CSGOp::Difference && e.who == 1 && e.type == EdgeType::Exit) {
                 hEnter.set_face_normal(ray, Dir3{-e.h.n.x, -e.h.n.y, -e.h.n.z});
             }
@@ -130,7 +144,7 @@ bool CSG::interval(const Ray& ray,
             // We are EXITING the result at this boundary
             tExt = e.t;
             hExit = e.h;
-            // For A\B exiting via B's ENTER (who=1, Enter), flip normal
+            // For A\B exiting via B's ENTER (who=1, Enter) flip normal
             if (op_ == CSGOp::Difference && e.who == 1 && e.type == EdgeType::Enter) {
                 hExit.set_face_normal(ray, Dir3{-e.h.n.x, -e.h.n.y, -e.h.n.z});
             }
@@ -148,7 +162,10 @@ bool CSG::interval(const Ray& ray,
     return true;
 }
 
-
+/**
+ * @brief First-hit query on the CSG solid within [tmin, tmax].
+ * On success writes hit data at the earliest valid t and returns true.
+ */
 bool CSG::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     double tEnter, tExit;
     Hit hEnter, hExit;
@@ -166,4 +183,3 @@ bool CSG::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
                     r.o.z + r.d.z * t };
     return true;
 }
-

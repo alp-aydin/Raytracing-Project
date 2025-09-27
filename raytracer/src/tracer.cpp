@@ -8,10 +8,17 @@
 #include <iomanip>
 #include <chrono>
 
+/// Trace a single ray and return its radiance via recursive path evaluation.
 Color Tracer::trace(const Ray& r) const {
     return trace_recursive(r, 0);
 }
 
+/**
+ * @brief Recursive ray tracing with local shading, reflection, and refraction.
+ * @param r Input ray to evaluate.
+ * @param depth Current recursion depth (stops at scene->recursion_limit).
+ * @return Linear RGB radiance along ray r.
+ */
 Color Tracer::trace_recursive(const Ray& r, int depth) const {
     if (!scene) return Color(0,0,0);
 
@@ -65,11 +72,18 @@ Color Tracer::trace_recursive(const Ray& r, int depth) const {
     return scene->background;
 }
 
-// R = I - 2(I·N)N, with I pointing into the surface
+/// Perfect-mirror reflection: R = I - 2(I·N)N with I pointing into the surface.
 Dir3 Tracer::reflect(const Dir3& incident, const Dir3& normal) {
     return incident - 2.0 * incident.dot(normal) * normal;
 }
 
+/**
+ * @brief Snell refraction of a direction through an interface.
+ * @param incident Incoming unit vector pointing into the surface.
+ * @param normal Outward unit surface normal.
+ * @param eta Relative index n_out/n_in (based on entering/exiting side).
+ * @return Refracted direction; (0,0,0) if TIR occurs (caller guards typically).
+ */
 Dir3 Tracer::refract(const Dir3& incident, const Dir3& normal, double eta) {
     // I points into surface, N points outward of hit surface
     double cos_i = -incident.dot(normal);
@@ -82,12 +96,18 @@ Dir3 Tracer::refract(const Dir3& incident, const Dir3& normal, double eta) {
     return eta * incident + (eta * cos_i - cos_t) * normal;
 }
 
+/// Return true if η causes total internal reflection for incident and normal.
 bool Tracer::has_total_internal_reflection(const Dir3& incident, const Dir3& normal, double eta) {
     double cos_i = -incident.dot(normal);
     double sin_t2 = eta * eta * std::max(0.0, 1.0 - cos_i * cos_i);
     return sin_t2 >= 1.0;
 }
 
+/**
+ * @brief Paper-mode primary shading (no hatching): lit surfaces on white.
+ * @param r Camera ray.
+ * @return Shaded color for hits; white background on miss.
+ */
 Color Tracer::trace_paper(const Ray& r) const {
     if (!scene) return Color(1,1,1);
     Hit h;
@@ -99,10 +119,17 @@ Color Tracer::trace_paper(const Ray& r) const {
     return Color(1,1,1);
 }
 
+/// Compute luma approximation for crosshatching thresholds.
 double Tracer::get_luminance(const Color& c) const {
     return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
 }
 
+/**
+ * @brief Edge strength heuristic using neighbor rays (depth/normal/material cues).
+ * @param x Pixel x coordinate.
+ * @param y Pixel y coordinate.
+ * @return Edge strength in [0,1], higher implies stronger outline.
+ */
 double Tracer::get_edge_strength(int x, int y) const {
     if (!scene || !camera) return 0.0;
 
@@ -150,6 +177,14 @@ double Tracer::get_edge_strength(int x, int y) const {
     return maxEdge;
 }
 
+/**
+ * @brief Convert luminance to hatch/blank ink in paper mode with ordered patterns.
+ * @param base Base color (unused for line decision).
+ * @param luminance Per-pixel luma in [0,1].
+ * @param x Pixel x coordinate.
+ * @param y Pixel y coordinate.
+ * @return Black (ink) or white (paper) for the hatch pass.
+ */
 Color Tracer::apply_crosshatch(const Color&, double luminance, int x, int y) const {
     if (luminance < 0.15) return Color(0,0,0);
 
@@ -169,6 +204,12 @@ Color Tracer::apply_crosshatch(const Color&, double luminance, int x, int y) con
     return drawLine ? Color(0,0,0) : Color(1,1,1);
 }
 
+/**
+ * @brief Console progress bar with percentage and ETA.
+ * @param current Completed units.
+ * @param total Total units.
+ * @param start_time Time point when the process began (for ETA).
+ */
 void Tracer::print_progress(int current, int total,
                             std::chrono::steady_clock::time_point start_time) const {
     const int barWidth = 50;
@@ -198,6 +239,11 @@ void Tracer::print_progress(int current, int total,
     std::cout << std::flush;
 }
 
+/**
+ * @brief Render the image into a framebuffer (standard or paper mode).
+ * @param framebuffer Output buffer of size width*height (row-major).
+ * @note Standard mode uses stochastic super-sampling; paper mode uses hatching.
+ */
 void Tracer::render(std::vector<Color>& framebuffer) const {
     if (!scene || !camera || width <= 0 || height <= 0) return;
 

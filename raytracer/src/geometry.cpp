@@ -1,6 +1,14 @@
 #include "geometry.h"
 #include <cmath>
 
+/**
+ * @brief Ray–sphere intersection; stores the closest hit in [tmin, tmax].
+ * @param ray Input ray (direction assumed normalized).
+ * @param tmin Minimum valid ray parameter.
+ * @param tmax Maximum valid ray parameter.
+ * @param out Filled with t, position, geometric normal (with face orientation), and material.
+ * @return true if a valid root lies in [tmin, tmax].
+ */
 bool Sphere::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const {
     // Ray-sphere: ||o + t d - c||^2 = r^2
     // Using homogeneous coordinates but computing as 3D vectors
@@ -28,6 +36,15 @@ bool Sphere::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const
     return true;
 }
 
+/**
+ * @brief Compute entry/exit parameters of a sphere along a ray.
+ * @param ray Input ray (direction assumed normalized).
+ * @param t0 Output entry t (<= t1).
+ * @param t1 Output exit t.
+ * @param h0 Entry hit record (position, oriented normal, material).
+ * @param h1 Exit hit record (position, oriented normal, material).
+ * @return true if the ray intersects (tangent allowed with t0==t1).
+ */
 bool Sphere::interval(const Ray& ray,
                       double& t0, double& t1,
                       Hit& h0, Hit& h1) const
@@ -61,6 +78,15 @@ bool Sphere::interval(const Ray& ray,
 }
 
 // ---------------- HalfSpace ----------------
+
+/**
+ * @brief Intersect the plane boundary of a half-space; returns finite surface hits only.
+ * @param r Input ray.
+ * @param tmin Minimum valid ray parameter.
+ * @param tmax Maximum valid ray parameter.
+ * @param out Hit at the plane if within [tmin, tmax] (with oriented normal and material).
+ * @return true if the boundary plane is hit; false for parallel rays or out-of-range t.
+ */
 bool HalfSpace::intersect(const Ray& r, double tmin, double tmax, Hit& out) const {
     const double ndotd = n.dot(r.d);
     if (std::abs(ndotd) < 1e-12) return false; // parallel => no finite *surface* hit
@@ -79,11 +105,15 @@ bool HalfSpace::intersect(const Ray& r, double tmin, double tmax, Hit& out) cons
     return true;
 }
 
-// Inside set is S = { X | n·(X - p0) >= 0 }.
-// f(t) = n·(r.o + t r.d - p0) = f0 + t * ndotd.
-// ndotd > 0  => inside for t >= tPlane  (enter at tPlane, exit = +∞).
-// ndotd < 0  => inside for t <= tPlane  (enter = -∞, exit at tPlane).
-// ndotd = 0  => parallel: either everywhere inside (f0>=0) or empty (f0<0).
+/**
+ * @brief Compute the inside-interval of a half-space along a ray (may be unbounded).
+ * @param r Input ray.
+ * @param tEnter Entry t (can be -∞).
+ * @param tExit Exit t (can be +∞).
+ * @param enterHit Hit representation at entry boundary (synthesized when unbounded).
+ * @param exitHit Hit representation at exit boundary (synthesized when unbounded).
+ * @return true if the ray intersects the inside set S = {X | n·(X - p0) >= 0}.
+ */
 bool HalfSpace::interval(const Ray& r, double& tEnter, double& tExit,
                          Hit& enterHit, Hit& exitHit) const
 {
@@ -117,12 +147,19 @@ bool HalfSpace::interval(const Ray& r, double& tEnter, double& tExit,
 }
 
 // ---------------- Pokeball ----------------
+
+/// Clamp a scalar to [-1, 1] to avoid acos domain errors.
 static inline double clamp1(double x){
     if (x < -1.0) return -1.0;
     if (x >  1.0) return  1.0;
     return x;
 }
 
+/**
+ * @brief Select region material (top, bottom, belt, button/ring) for a surface point.
+ * @param p World-space point on the sphere surface.
+ * @return Material assigned to that region for shading.
+ */
 const Material* Pokeball::pick_region_material(const Point3& p) const {
     // Local unit position on the sphere
     Dir3 u = Dir3((p.x - this->c.x) / this->r, (p.y - this->c.y) / this->r, (p.z - this->c.z) / this->r);      // unit normal / local direction
@@ -142,6 +179,14 @@ const Material* Pokeball::pick_region_material(const Point3& p) const {
     return (u.y >= 0.0) ? &topMat : &bottomMat;
 }
 
+/**
+ * @brief Intersect as a sphere and assign material by Poké Ball region.
+ * @param ray Input ray.
+ * @param tmin Minimum valid ray parameter.
+ * @param tmax Maximum valid ray parameter.
+ * @param out Filled with hit data; material overridden by region mapping.
+ * @return true if the base sphere is hit within [tmin, tmax].
+ */
 bool Pokeball::intersect(const Ray& ray, double tmin, double tmax, Hit& out) const {
     // Use the base sphere intersection, then recolor by region.
     if (!Sphere::intersect(ray, tmin, tmax, out)) return false;
@@ -150,6 +195,15 @@ bool Pokeball::intersect(const Ray& ray, double tmin, double tmax, Hit& out) con
     return true;
 }
 
+/**
+ * @brief Entry/exit interval for Poké Ball with per-boundary region materials.
+ * @param ray Input ray.
+ * @param t0 Output entry t (<= t1).
+ * @param t1 Output exit t.
+ * @param h0 Entry hit with region material.
+ * @param h1 Exit hit with region material.
+ * @return true if the base sphere interval exists.
+ */
 bool Pokeball::interval(const Ray& ray, double& t0, double& t1,
                         Hit& h0, Hit& h1) const
 {

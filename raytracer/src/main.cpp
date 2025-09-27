@@ -9,6 +9,13 @@
 #include "tracer.h"
 #include "json_loader.h"
 
+/**
+ * @brief Convert a linear Color framebuffer to an 8-bit BGR OpenCV image.
+ * @param fb Row-major framebuffer of size W*H with linear [0,1] channels.
+ * @param W Image width in pixels.
+ * @param H Image height in pixels.
+ * @return cv::Mat with type CV_8UC3 in BGR channel order.
+ */
 static cv::Mat framebuffer_to_mat_bgr8(const std::vector<Color>& fb, int W, int H) {
     cv::Mat img(H, W, CV_8UC3);
     for (int y = 0; y < H; ++y) {
@@ -26,6 +33,12 @@ static cv::Mat framebuffer_to_mat_bgr8(const std::vector<Color>& fb, int W, int 
     return img;
 }
 
+/**
+ * @brief Program entry: load scene JSON, render with Tracer, and write PNG.
+ * @param argc Argument count.
+ * @param argv Arguments: <scene.json> <output.png> [--paper].
+ * @return Exit code: 0 on success; nonzero on usage, load, or I/O errors.
+ */
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <scene.json> <output.png> [--paper]\n";

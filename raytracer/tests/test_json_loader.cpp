@@ -1,3 +1,7 @@
+/**
+ * @brief JSON loader unit tests for screen, objects, transforms, and validation.
+ * Verifies successful parsing, defaults, strict color schema, and rotation constraints.
+ */
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include "json_loader.h"
@@ -5,6 +9,7 @@
 #include "camera.h"
 
 TEST_CASE("JSON scene loading", "[json][loader]") {
+    /// Valid scene containing one red sphere and explicit material fields.
     const std::string testJson = R"({
         "screen": {
             "position": [0, 0, 0],
@@ -43,6 +48,7 @@ TEST_CASE("JSON scene loading", "[json][loader]") {
         REQUIRE(camera.screen.dpi == 100);
     }
     
+    /// Minimal scene tests default dpi propagation (72).
     SECTION("Camera has correct default DPI") {
         const std::string minimalJson = R"({
             "screen": {
@@ -59,6 +65,7 @@ TEST_CASE("JSON scene loading", "[json][loader]") {
         REQUIRE(camera2.screen.dpi == 72);  // Should use spec default
     }
     
+    /// Malformed JSON must throw a parse/processing exception.
     SECTION("Invalid JSON throws exception") {
         const std::string badJson = "{ invalid json }";
         Scene scene3;
@@ -66,6 +73,7 @@ TEST_CASE("JSON scene loading", "[json][loader]") {
         REQUIRE_THROWS(jsonio::load_scene_from_json_text(badJson, scene3, camera3));
     }
     
+    /// Color block must be an object, not a raw array.
     SECTION("Strict color format required") {
         const std::string badColorJson = R"({
             "screen": {
@@ -91,6 +99,7 @@ TEST_CASE("JSON scene loading", "[json][loader]") {
 }
 
 TEST_CASE("JSON halfSpace loading", "[json][halfspace]") {
+    /// Scene with a single halfSpace primitive using a valid color block.
     const std::string testJson = R"({
         "screen": {
             "position": [0, 0, 0],
@@ -125,6 +134,7 @@ TEST_CASE("JSON halfSpace loading", "[json][halfspace]") {
 }
 
 TEST_CASE("JSON rotation loading", "[json][rotation]") {
+    /// Scene with a rotation wrapper (direction=2 ⇒ Z-axis) around a sphere.
     const std::string testJson = R"({
         "screen": {
             "position": [0, 0, 0],
@@ -163,6 +173,7 @@ TEST_CASE("JSON rotation loading", "[json][rotation]") {
         REQUIRE(scene.objects.size() == 1);
     }
     
+    /// Invalid axis index must throw (only {0,1,2} valid).
     SECTION("Invalid rotation direction throws") {
         const std::string badRotationJson = R"({
             "screen": {
