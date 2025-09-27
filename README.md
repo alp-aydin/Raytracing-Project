@@ -116,6 +116,47 @@ Notes
 * Ensure cmake, ninja, and your compiler are from the same environment (check with: which cmake / ninja / g++ or cl.exe).
 * On Windows, vcpkg works most smoothly with the Visual Studio (MSVC) toolchain. If you use MSYS2/MinGW, prefer the non-vcpkg Ninja method you already documented.
 
+  # Additional Features
+Paper mode renders a monochrome, cross-hatched image; enable it with the CLI flag --paper (no JSON changes needed), and lighting still controls brightness/contrast.
+The pokeball node is a parametric ball with built-in top/bottom halves, belt, ring, and button, so you add one object instead of composing CSG.
+Provide position and radius, plus a colors block with per-part material fields (top, bottom, belt, ring, button), each defining diffuse, ambient, specular, and shininess.
+Optional geometry controls are belt_half (belt half-thickness as a fraction of radius), ring_width (ring thickness), button_outer (button radius), and button_dir (direction the button faces, e.g., a normalized XYZ vector).
+Use it by inserting a "pokeball": { ... } node inside objects, alongside your lights/ground, exactly as in your JSON.
+
+Json format:
+**Top level**
+- `screen`: sets image plane and camera.
+  - `dpi` × `dimensions` → output resolution (pixels).
+  - `position` = image plane origin; `observer` = camera/eye. Ensure objects are **in front of the screen** along view direction.
+- `medium`: global render controls.
+  - `ambient` = base light floor (RGB 0–1); use sparingly.
+  - `index` = IOR of surrounding medium.
+  - `recursion` = reflection/refraction depth (int ≥ 0).
+- `background` (optional): color when rays miss everything.
+- `sources`: **array of point lights** with `position` and `intensity` (RGB ≥ 0; values > 1 are fine).
+
+**CRITICAL LIGHTING NOTE — USE MANY LIGHTS**
+- This renderer expects **multiple, strong lights**. Start with **3–5 lights** (key, fill, rim, extra fills) and **generous intensities** (tens, not decimals).
+- If the frame is dark/black: **increase light intensities and add lights first**; tweak `medium.ambient` only after that.
+
+**Objects & materials**
+- `objects`: list of nodes.
+  - `sphere`: `position`, `radius`, `color` { `diffuse`, `specular`, `shininess` (and optionally `kd`, `ks`) }.
+  - `pokeball`: `position`, `radius`, `colors` for `top/bottom/belt/ring/button` (each with `diffuse/ambient/specular/shininess`), plus optional `belt_half`, `ring_width`, `button_outer`, `button_dir`.
+  - `halfSpace`: infinite plane via `position` and `normal` with a `color` block.
+  - (If available) transforms/CSG follow the same node pattern.
+- All RGB arrays are length 3 in `[0,1]`. `shininess` > 0. **No comments or trailing commas.**
+
+**Quick sanity checks**
+- Many lights present (3–5+), with sufficient `intensity`.
+- Objects are in front of the camera; screen/observer positioned sensibly.
+- `recursion` is adequate (e.g., ≥ 1 if reflections are expected).
+- Still dull? Add a fill light, raise key intensity, then slightly increase `medium.ambient`.
+
+Also, Please refer to **Examples**, we have some cool stuff and you can get more insight about the general light levels used.
+
+
+
 
 
 
